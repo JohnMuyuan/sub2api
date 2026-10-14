@@ -420,9 +420,9 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	shouldDisable := false
 	if s.rateLimitService != nil {
 		if len(requestedModel) > 0 {
-			shouldDisable = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, requestedModel[0])
+			shouldDisable = s.regionalHandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, requestedModel[0])
 		} else {
-			shouldDisable = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
+			shouldDisable = s.regionalHandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 		}
 	}
 	if shouldDisable {
@@ -536,9 +536,9 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 	// OAuth/Setup Token 账号的 403：标记账号异常
 	if account.IsOAuth() && statusCode == 403 {
 		if len(requestedModel) > 0 {
-			s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body, requestedModel[0])
+			s.regionalHandleUpstreamError(ctx, account, statusCode, resp.Header, body, requestedModel[0])
 		} else {
-			s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body)
+			s.regionalHandleUpstreamError(ctx, account, statusCode, resp.Header, body)
 		}
 		logger.LegacyPrintf("service.gateway", "Account %d: marked as error after %d retries for status %d", account.ID, maxRetryAttempts, statusCode)
 	} else {
@@ -550,10 +550,10 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account, requestedModel ...string) {
 	body, _ := s.readUpstreamErrorBody(resp)
 	if len(requestedModel) > 0 {
-		s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, requestedModel[0])
+		s.regionalHandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, requestedModel[0])
 		return
 	}
-	s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
+	s.regionalHandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 }
 
 // handleRetryExhaustedError 处理重试耗尽后的错误

@@ -43,6 +43,9 @@ func (api *OAuthRefreshAPI) lockRegionalRefresh(ctx context.Context, id int64) (
 	var locked bool
 	err = conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1,$2)", int32(283), int32(id^(id>>32))).Scan(&locked)
 	if err != nil || !locked {
+		if err != nil {
+			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		}
 		_ = conn.Close()
 		if err != nil {
 			return nil, err

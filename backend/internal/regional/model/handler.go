@@ -42,34 +42,34 @@ type Handler struct {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", 405)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	if h.Ledger == nil || h.Admit == nil || h.Forward == nil {
-		http.Error(w, "regional admission unavailable", 503)
+		http.Error(w, "regional admission unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20+1))
 	if err != nil || len(raw) > 1<<20 {
-		http.Error(w, "request too large", 400)
+		http.Error(w, "request too large", http.StatusBadRequest)
 		return
 	}
 	var req Request
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err = dec.Decode(&req); err != nil || dec.Decode(new(any)) != io.EOF || req.Model == "" || req.MaxTokens <= 0 || len(req.Messages) == 0 {
-		http.Error(w, "only bounded text chat is supported", 400)
+		http.Error(w, "only bounded text chat is supported", http.StatusBadRequest)
 		return
 	}
 	for _, m := range req.Messages {
 		if m.Role != "system" && m.Role != "user" && m.Role != "assistant" {
-			http.Error(w, "unsupported message role", 400)
+			http.Error(w, "unsupported message role", http.StatusBadRequest)
 			return
 		}
 	}
 	reservation, price, err := h.Admit(r.Context(), req)
 	if err != nil || price.Model != req.Model {
-		http.Error(w, "regional budget unavailable", 503)
+		http.Error(w, "regional budget unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	wrote := false
@@ -147,7 +147,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return usage, nil
 	})
 	if err != nil && !wrote {
-		http.Error(w, "metered request unavailable", 503)
+		http.Error(w, "metered request unavailable", http.StatusServiceUnavailable)
 	}
 }
 

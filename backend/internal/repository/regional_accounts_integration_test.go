@@ -16,6 +16,16 @@ import (
 
 func TestRegionalAccountRPMSharedBudgetAcrossPods(t *testing.T) {
 	ctx := context.Background()
+	// Start safely inside the minute; rollover has a separate real-time test.
+	var dbNow time.Time
+	require.NoError(t, integrationDB.QueryRow("SELECT clock_timestamp()").Scan(&dbNow))
+	if dbNow.Second() < 3 || dbNow.Second() > 54 {
+		delay := time.Until(dbNow.Truncate(time.Minute).Add(3 * time.Second))
+		if delay < 0 {
+			delay += time.Minute
+		}
+		time.Sleep(delay)
+	}
 	id := time.Now().UnixNano()
 	p := &accountstate.RPMPrimary{DB: integrationDB, Limit: func(context.Context, *sql.Tx, int64) (int, error) { return 4, nil }}
 	var minute int64

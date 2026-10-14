@@ -205,7 +205,7 @@ func (l *RPMLocal) Acquire(ctx context.Context, id int64) (bool, int, time.Time,
 	}
 
 	var clockOK bool
-	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM regional_local_account_states WHERE account_id=$1 AND clock_valid_until>clock_timestamp() AND extract(second FROM clock_timestamp())>=2 AND extract(second FROM clock_timestamp())<58)", id).Scan(&clockOK); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM regional_local_account_states WHERE account_id=$1 AND clock_valid_until>clock_timestamp() AND NOT invalid AND valid_until>clock_timestamp() AND cooldown_until<=clock_timestamp() AND extract(second FROM clock_timestamp())>=2 AND extract(second FROM clock_timestamp())<58)", id).Scan(&clockOK); err != nil {
 		return false, 0, reset, err
 	}
 	if !clockOK {
@@ -223,7 +223,7 @@ func (l *RPMLocal) Acquire(ctx context.Context, id int64) (bool, int, time.Time,
 	if err != nil {
 		return false, used, reset, err
 	}
-	result, err := tx.ExecContext(ctx, "UPDATE regional_local_rpm_grants SET used=used+1 WHERE grant_id=$1 AND used<units AND minute=floor(extract(epoch FROM clock_timestamp())/60)::bigint AND EXISTS(SELECT 1 FROM regional_local_account_states WHERE account_id=$2 AND clock_valid_until>clock_timestamp() AND extract(second FROM clock_timestamp())>=2 AND extract(second FROM clock_timestamp())<58)", grant, id)
+	result, err := tx.ExecContext(ctx, "UPDATE regional_local_rpm_grants SET used=used+1 WHERE grant_id=$1 AND used<units AND minute=floor(extract(epoch FROM clock_timestamp())/60)::bigint AND EXISTS(SELECT 1 FROM regional_local_account_states WHERE account_id=$2 AND clock_valid_until>clock_timestamp() AND NOT invalid AND valid_until>clock_timestamp() AND cooldown_until<=clock_timestamp() AND extract(second FROM clock_timestamp())>=2 AND extract(second FROM clock_timestamp())<58)", grant, id)
 	if err != nil {
 		return false, used, reset, err
 	}
