@@ -13,17 +13,22 @@ import (
 // Primary issues grants by debiting spendable balance in the SAME transaction
 // as the permanent lease identity. Callers must authenticate region/user and
 // scope grants before calling Issue; this library does not expose HTTP routes.
-type Primary struct{ DB *sql.DB }
+type Primary struct {
+	Funding      func(context.Context, *sql.Tx, int64, int64) (bool, error)
+	DB           *sql.DB
+	ReserveScope func(context.Context, *sql.Tx, regional.Lease) error
+	CloseScope   func(context.Context, *sql.Tx, regional.Lease, regional.Amount) error
+}
 
 func primaryLease(ctx context.Context, tx *sql.Tx, id string) (regional.Lease, regional.Amount, string, error) {
 	l := regional.Lease{SchemaVersion: regional.SchemaVersion}
 	var spent regional.Amount
 	var state string
-	err := tx.QueryRowContext(ctx, `SELECT lease_id,region_id,user_id,granted,spent,issued_at,expires_at,state FROM regional_quota_leases WHERE lease_id=$1 FOR UPDATE`, id).Scan(&l.LeaseID, &l.RegionID, &l.UserID, &l.Granted, &spent, &l.IssuedAt, &l.ExpiresAt, &state)
+	err := tx.QueryRowContext(ctx, `SELECT lease_id,region_id,user_id,granted,spent,issued_at,expires_at,state,api_key_id,account_id,billing_mode FROM regional_quota_leases WHERE lease_id=$1 FOR UPDATE`, id).Scan(&l.LeaseID, &l.RegionID, &l.UserID, &l.Granted, &spent, &l.IssuedAt, &l.ExpiresAt, &state, &l.APIKeyID, &l.AccountID, &l.BillingMode)
 	return l, spent, state, err
 }
 func sameLease(a, b regional.Lease) bool {
-	return a.SchemaVersion == b.SchemaVersion && a.LeaseID == b.LeaseID && a.RegionID == b.RegionID && a.UserID == b.UserID && a.Granted == b.Granted && a.IssuedAt.Equal(b.IssuedAt) && a.ExpiresAt.Equal(b.ExpiresAt)
+	return a.BillingMode == b.BillingMode && a.APIKeyID == b.APIKeyID && a.AccountID == b.AccountID && a.SchemaVersion == b.SchemaVersion && a.LeaseID == b.LeaseID && a.RegionID == b.RegionID && a.UserID == b.UserID && a.Granted == b.Granted && a.IssuedAt.Equal(b.IssuedAt) && a.ExpiresAt.Equal(b.ExpiresAt)
 }
 func (p *Primary) Issue(ctx context.Context, l regional.Lease) error {
 	if err := l.Validate(); err != nil {
@@ -65,18 +70,37 @@ func (p *Primary) Issue(ctx context.Context, l regional.Lease) error {
 	if now.Before(l.IssuedAt) || !now.Before(l.ExpiresAt) || now.Sub(l.IssuedAt) > 5*time.Second {
 		return ErrExhausted
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE users SET balance=balance-$2::numeric,updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL AND status='active' AND balance >= $2::numeric`, l.UserID, amount)
-	if err != nil {
-		return err
+	funded := true
+	if p.Funding != nil {
+		funded, err = p.Funding(ctx, tx, l.UserID, l.APIKeyID)
+		if err != nil {
+			return err
+		}
 	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return err
+	if (l.BillingMode == "subscription") != (!funded) {
+		return ErrConflict
 	}
-	if n != 1 {
-		return ErrExhausted
+	if funded {
+		result, err := tx.ExecContext(ctx, `UPDATE users SET balance=balance-$2::numeric,updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL AND status='active' AND balance >= $2::numeric`, l.UserID, amount)
+		if err != nil {
+			return err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return ErrExhausted
+		}
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO regional_quota_leases(lease_id,region_id,user_id,granted,issued_at,expires_at) VALUES($1,$2,$3,$4,$5,$6)`, l.LeaseID, l.RegionID, l.UserID, int64(l.Granted), l.IssuedAt, l.ExpiresAt)
+	if p.ReserveScope != nil {
+		if err = p.ReserveScope(ctx, tx, l); err != nil {
+			return err
+		}
+	} else if l.APIKeyID != 0 || l.AccountID != 0 {
+		return errors.New("quota scope required")
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO regional_quota_leases(lease_id,region_id,user_id,granted,issued_at,expires_at,api_key_id,account_id,billing_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, l.LeaseID, l.RegionID, l.UserID, int64(l.Granted), l.IssuedAt, l.ExpiresAt, l.APIKeyID, l.AccountID, l.BillingMode)
 	if err != nil {
 		return err
 	}
@@ -176,16 +200,25 @@ func (p *Primary) Close(ctx context.Context, region string, receipt DrainReceipt
 		return err
 	}
 	// Do not lose money when a user was soft-deleted while a lease was open.
-	result, err := tx.ExecContext(ctx, `UPDATE users SET balance=balance+$2::numeric,updated_at=NOW() WHERE id=$1`, lease.UserID, amount)
-	if err != nil {
-		return err
+	if lease.BillingMode != "subscription" {
+		result, err := tx.ExecContext(ctx, `UPDATE users SET balance=balance+$2::numeric,updated_at=NOW() WHERE id=$1`, lease.UserID, amount)
+		if err != nil {
+			return err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return errors.New("lease user missing")
+		}
 	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n != 1 {
-		return errors.New("lease user missing")
+	if p.CloseScope != nil {
+		if err = p.CloseScope(ctx, tx, lease, spent); err != nil {
+			return err
+		}
+	} else if lease.APIKeyID != 0 || lease.AccountID != 0 {
+		return errors.New("closure scope required")
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE regional_quota_leases SET state='closed' WHERE lease_id=$1`, lease.LeaseID); err != nil {
 		return err

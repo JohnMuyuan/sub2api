@@ -14,6 +14,7 @@ import (
 // SettleScope consumes/refunds those budgets in this transaction and must write
 // canonical usage. Existing asynchronous balance billing MUST NOT run as well.
 type PrimaryRequests struct {
+	Funding     func(context.Context, *sql.Tx, int64, int64) (bool, error)
 	DB          *sql.DB
 	Authorize   func(context.Context, *sql.Tx, Reservation) error
 	SettleScope VerifyEvent
@@ -54,21 +55,30 @@ func (p *PrimaryRequests) Reserve(ctx context.Context, r Reservation) (bool, err
 	if !errors.Is(err, sql.ErrNoRows) {
 		return false, err
 	}
-	result, err := tx.ExecContext(ctx, "UPDATE users SET balance=balance-$2::numeric,updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL AND status='active' AND balance >= $2::numeric", r.UserID, amount)
-	if err != nil {
-		return false, err
+	funded := true
+	if p.Funding != nil {
+		funded, err = p.Funding(ctx, tx, r.UserID, r.APIKeyID)
+		if err != nil {
+			return false, err
+		}
 	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-	if n != 1 {
-		return false, ErrExhausted
+	if funded {
+		result, err := tx.ExecContext(ctx, "UPDATE users SET balance=balance-$2::numeric,updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL AND status='active' AND balance >= $2::numeric", r.UserID, amount)
+		if err != nil {
+			return false, err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+		if n != 1 {
+			return false, ErrExhausted
+		}
 	}
 	if err = p.Authorize(ctx, tx, r); err != nil {
 		return false, err
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO regional_primary_requests(request_id,user_id,request,maximum,state) VALUES($1,$2,$3,$4,'reserved')", r.RequestID, r.UserID, string(raw), int64(r.Maximum))
+	_, err = tx.ExecContext(ctx, "INSERT INTO regional_primary_requests(request_id,user_id,request,maximum,state,balance_funded) VALUES($1,$2,$3,$4,'reserved',$5)", r.RequestID, r.UserID, string(raw), int64(r.Maximum), funded)
 	if err != nil {
 		return false, err
 	}
@@ -102,7 +112,8 @@ func (p *PrimaryRequests) finish(ctx context.Context, id string, e *Event) error
 	defer func() { _ = tx.Rollback() }()
 	var raw, previous []byte
 	var state string
-	if err = tx.QueryRowContext(ctx, "SELECT request,state,event FROM regional_primary_requests WHERE request_id=$1 FOR UPDATE", id).Scan(&raw, &state, &previous); err != nil {
+	var funded bool
+	if err = tx.QueryRowContext(ctx, "SELECT request,state,event,balance_funded FROM regional_primary_requests WHERE request_id=$1 FOR UPDATE", id).Scan(&raw, &state, &previous, &funded); err != nil {
 		return err
 	}
 	var r Reservation
@@ -152,6 +163,9 @@ func (p *PrimaryRequests) finish(ctx context.Context, id string, e *Event) error
 		refund -= u.Charge
 		next = "completed"
 		event = string(encoded)
+	}
+	if !funded {
+		refund = 0
 	}
 	amount, err := USD(refund)
 	if err != nil {

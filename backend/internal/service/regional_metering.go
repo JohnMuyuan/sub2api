@@ -25,8 +25,24 @@ import (
 // must never accept identity from public request headers or async snapshots.
 type RegionalMeteringAdmission func(context.Context, *APIKey, *Account, []byte) (ledger.Reservation, ledger.Price, error)
 type RegionalMetering struct {
-	Ledger ledger.RequestLedger
-	Admit  RegionalMeteringAdmission
+	Ledger    ledger.RequestLedger
+	Admit     RegionalMeteringAdmission
+	Readiness func(context.Context) error
+	Run       func(context.Context)
+	Stop      func()
+}
+
+func (m *RegionalMetering) Check(ctx context.Context) error {
+	if m == nil || m.Ledger == nil || m.Admit == nil || m.Readiness == nil {
+		return errors.New("funds runtime not configured")
+	}
+	return m.Readiness(ctx)
+}
+func (s *OpenAIGatewayService) RegionalFundsReadiness() *RegionalMetering {
+	if s == nil {
+		return nil
+	}
+	return s.regionalMetering
 }
 
 func WithRegionalMetering(m *RegionalMetering) OpenAIGatewayOption {

@@ -145,6 +145,9 @@ func (a *Amount) UnmarshalJSON(data []byte) error {
 // It is scoped to one user, region and accounting currency (USD). It must not
 // be reused by another region or returned merely because ExpiresAt elapsed.
 type Lease struct {
+	BillingMode   string    `json:"billing_mode,omitempty"`
+	APIKeyID      int64     `json:"api_key_id,omitempty"`
+	AccountID     int64     `json:"account_id,omitempty"`
 	SchemaVersion int       `json:"schema_version"`
 	LeaseID       string    `json:"lease_id"`
 	RegionID      string    `json:"region_id"`
@@ -202,6 +205,9 @@ func (e UsageEvent) ValidateAgainst(l Lease) error {
 	}
 	if e.LeaseID != l.LeaseID || e.RegionID != l.RegionID || e.UserID != l.UserID {
 		return errors.New("usage event lease mismatch")
+	}
+	if l.APIKeyID != 0 && e.APIKeyID != l.APIKeyID || l.AccountID != 0 && e.AccountID != l.AccountID {
+		return errors.New("usage outside funded scope")
 	}
 	if e.APIKeyID <= 0 || e.AccountID <= 0 {
 		return errors.New("usage event requires API key and account")

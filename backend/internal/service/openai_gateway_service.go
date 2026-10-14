@@ -786,6 +786,9 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 // CloseOpenAIWSPool 关闭 OpenAI WebSocket 连接池的后台 worker 和空闲连接。
 // 应在应用优雅关闭时调用。
 func (s *OpenAIGatewayService) CloseOpenAIWSPool() {
+	if s != nil && s.regionalMetering != nil && s.regionalMetering.Stop != nil {
+		s.regionalMetering.Stop()
+	}
 	if s != nil && s.stopAstraSetup != nil {
 		s.stopAstraSetup()
 	}
