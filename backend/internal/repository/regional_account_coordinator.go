@@ -134,7 +134,7 @@ func (c *regionalAccountCoordinator) Check(ctx context.Context) error {
 			return err
 		}
 		var ready bool
-		err := c.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM regional_local_rpm_grants WHERE region_id=$1 AND account_id=$2 AND minute=floor(extract(epoch FROM clock_timestamp())/60)::bigint AND used<units)", c.region, target.AccountID).Scan(&ready)
+		err := c.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM regional_local_rpm_grants WHERE region_id=$1 AND account_id=$2 AND minute=floor(extract(epoch FROM clock_timestamp())/60)::bigint AND used<units AND EXISTS(SELECT 1 FROM regional_local_account_states WHERE account_id=$2 AND clock_valid_until>clock_timestamp() AND extract(second FROM clock_timestamp())>=2 AND extract(second FROM clock_timestamp())<58))", c.region, target.AccountID).Scan(&ready)
 		if err != nil {
 			return err
 		}
