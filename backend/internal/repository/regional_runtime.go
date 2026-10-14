@@ -249,18 +249,25 @@ func (c *regionalConcurrencyCache) RunRegionalRuntime(ctx context.Context) {
 			c.brokerClient.Close()
 		}
 	}()
+	stateCtx, stopState := context.WithCancel(ctx)
+	stateDone := make(chan struct{})
+	if c.brokerClient != nil && c.local != nil {
+		go func() { defer close(stateDone); c.runRegionalAccountSnapshots(stateCtx) }()
+	} else {
+		close(stateDone)
+	}
+	defer func() { stopState(); <-stateDone }()
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
 		cycle, cancel := context.WithTimeout(ctx, 20*time.Second)
 		if c.broker != nil {
 			states := &accountstate.States{DB: c.database(), Region: c.local.Region}
-			ids := []int64{}
 			var minute int64
 			if err := c.database().QueryRowContext(cycle, "SELECT floor(extract(epoch FROM clock_timestamp())/60)::bigint").Scan(&minute); err == nil {
 				localRPM := &accountstate.RPMLocal{DB: c.database(), Region: c.local.Region}
 				for _, target := range c.runtimeConfig.RPMTargets {
-					ids = append(ids, target.AccountID)
+
 					g := accountstate.RPMGrant{ID: fmt.Sprintf("rpm-%s-%d-%d", c.local.Region, target.AccountID, minute), Region: c.local.Region, AccountID: target.AccountID, Minute: minute, Units: target.Units}
 					if err := localRPM.Fetch(cycle, c.brokerClient, g); err != nil {
 						slog.Warn("regional RPM grant unavailable")
@@ -268,7 +275,7 @@ func (c *regionalConcurrencyCache) RunRegionalRuntime(ctx context.Context) {
 
 				}
 			}
-			if err := states.Sync(cycle, c.brokerClient, ids); err != nil {
+			if err := states.FlushReports(cycle, c.brokerClient); err != nil {
 				slog.Warn("regional account state sync unavailable")
 			}
 
@@ -349,8 +356,45 @@ func (c *regionalConcurrencyCache) prepareControl() error {
 		if err != nil {
 			return err
 		}
+		if len(cfg.RPMTargets) > 100 {
+			client.Close()
+			return errors.New("regional RPM target batch exceeds 100")
+		}
+		rpmSeen := map[int64]bool{}
+		for _, target := range cfg.RPMTargets {
+			if target.AccountID <= 0 || target.Units <= 0 || rpmSeen[target.AccountID] {
+				client.Close()
+				return errors.New("invalid regional RPM target")
+			}
+			rpmSeen[target.AccountID] = true
+		}
 		c.brokerClient = client
 		c.broker = &control.Broker{DB: c.local.DB, Slots: c.local, Remote: client}
 	}
 	return nil
+}
+
+// State refresh has its own deadline and cadence, independent of slow issuance
+// and outbox requests. At most one batch is in flight per worker.
+func (c *regionalConcurrencyCache) runRegionalAccountSnapshots(ctx context.Context) {
+	ids := make([]int64, 0, len(c.runtimeConfig.RPMTargets))
+	for _, t := range c.runtimeConfig.RPMTargets {
+		ids = append(ids, t.AccountID)
+	}
+	states := &accountstate.States{DB: c.database(), Region: c.local.Region}
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		if c.runtimeFailed.Load() {
+			return
+		}
+		if err := states.Sync(ctx, c.brokerClient, ids); err != nil && ctx.Err() == nil {
+			slog.Warn("regional state batch refresh failed")
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }

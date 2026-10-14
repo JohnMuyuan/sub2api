@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/regional/accountstate"
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 	"sync"
 	"testing"
@@ -81,4 +82,79 @@ func TestRegionalAccountStateMonotonicAndExpired(t *testing.T) {
 	state.ValidUntil = time.Now().UTC().Add(-time.Second)
 	require.NoError(t, s.Install(ctx, state))
 	require.Error(t, s.Allowed(ctx, state.AccountID))
+}
+
+type regionalBatchStateRemote struct {
+	db    *sql.DB
+	calls int
+	omit  bool
+	delay time.Duration
+}
+
+func (r *regionalBatchStateRemote) ReportState(context.Context, accountstate.Event) error { return nil }
+func (r *regionalBatchStateRemote) GetStates(ctx context.Context, ids []int64) (accountstate.StateBatch, error) {
+	r.calls++
+	var now time.Time
+	if err := r.db.QueryRowContext(ctx, "SELECT clock_timestamp()").Scan(&now); err != nil {
+		return accountstate.StateBatch{}, err
+	}
+	if r.delay > 0 {
+		select {
+		case <-ctx.Done():
+			return accountstate.StateBatch{}, ctx.Err()
+		case <-time.After(r.delay):
+		}
+	}
+	batch := accountstate.StateBatch{ServerTime: now}
+	for _, id := range ids {
+		batch.States = append(batch.States, accountstate.State{AccountID: id, Revision: 1, CooldownUntil: now.Add(-time.Hour).Truncate(time.Microsecond), ValidUntil: now.Add(15 * time.Second), ServerTime: now})
+	}
+	if r.omit {
+		batch.States = batch.States[:len(batch.States)-1]
+	}
+	return batch, nil
+}
+func TestRegionalAccountStateBatchOneRoundTripAndAtomicClockProof(t *testing.T) {
+	ctx := context.Background()
+	s := &accountstate.States{DB: integrationDB, Region: "batch"}
+	ids := make([]int64, 32)
+	start := time.Now().UnixNano()
+	for i := range ids {
+		ids[i] = start + int64(i)
+	}
+	remote := &regionalBatchStateRemote{db: integrationDB, delay: 30 * time.Millisecond}
+	require.NoError(t, s.Sync(ctx, remote, ids))
+	require.Equal(t, 1, remote.calls)
+	var count, deadlines int
+	require.NoError(t, integrationDB.QueryRow("SELECT count(*),count(DISTINCT clock_valid_until) FROM regional_local_account_states WHERE account_id=ANY($1) AND clock_valid_until>clock_timestamp()", pq.Array(ids)).Scan(&count, &deadlines))
+	require.Equal(t, 32, count)
+	require.Equal(t, 1, deadlines)
+	missing := []int64{start + 100, start + 101}
+	remote.omit = true
+	require.Error(t, s.Sync(ctx, remote, missing))
+	require.NoError(t, integrationDB.QueryRow("SELECT count(*) FROM regional_local_account_states WHERE account_id=ANY($1)", pq.Array(missing)).Scan(&count))
+	require.Zero(t, count)
+	remote.omit = false
+	remote.delay = 2 * time.Second
+	require.Error(t, s.Sync(ctx, remote, missing))
+	require.NoError(t, integrationDB.QueryRow("SELECT count(*) FROM regional_local_account_states WHERE account_id=ANY($1)", pq.Array(missing)).Scan(&count))
+	require.Zero(t, count)
+}
+
+// Exercise a real database minute boundary after obtaining the budget lock.
+// No mocked clock or alternate SQL replaces the production transaction.
+func TestRegionalAccountRPMRejectsRolloverAfterLock(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 70*time.Second)
+	defer cancel()
+	id := time.Now().UnixNano()
+	p := &accountstate.RPMPrimary{DB: integrationDB, Limit: func(ctx context.Context, tx *sql.Tx, id int64) (int, error) {
+		_, err := tx.ExecContext(ctx, "SELECT pg_sleep(GREATEST(0,60-extract(second FROM clock_timestamp())+0.05))")
+		return 4, err
+	}}
+	ok, _, _, err := p.Acquire(ctx, id)
+	require.ErrorIs(t, err, accountstate.ErrUnavailable)
+	require.False(t, ok)
+	var used int
+	require.NoError(t, integrationDB.QueryRow("SELECT COALESCE(sum(primary_used),0) FROM regional_rpm_budgets WHERE account_id=$1", id).Scan(&used))
+	require.Zero(t, used)
 }
