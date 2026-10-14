@@ -32,6 +32,10 @@ func RegisterGatewayRoutes(
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 ) {
+	googleAuth := middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg)
+	if cfg.Runtime.Role == config.RuntimeRoleGateway && cfg.Runtime.RegionalAuthFile != "" {
+		googleAuth = middleware.RegionalAPIKeyAuth(apiKeyService, cfg)
+	}
 	// BPS fetches these capability URLs without the client's API key. There is
 	// no public upload route; only authenticated BPS requests can create them.
 	podRoute := func(c *gin.Context) {
@@ -376,7 +380,7 @@ func RegisterGatewayRoutes(
 	gemini.Use(clientRequestID)
 	gemini.Use(opsErrorLogger)
 	gemini.Use(endpointNorm)
-	gemini.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
+	gemini.Use(googleAuth)
 	gemini.Use(captureTraffic)
 	gemini.Use(groupModelAllowlist)
 	gemini.Use(groupStreamOnly)
@@ -553,7 +557,7 @@ func RegisterGatewayRoutes(
 	antigravityV1Beta.Use(opsErrorLogger)
 	antigravityV1Beta.Use(endpointNorm)
 	antigravityV1Beta.Use(middleware.ForcePlatform(service.PlatformAntigravity))
-	antigravityV1Beta.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
+	antigravityV1Beta.Use(googleAuth)
 	antigravityV1Beta.Use(captureTraffic)
 	antigravityV1Beta.Use(groupModelAllowlist)
 	antigravityV1Beta.Use(groupStreamOnly)

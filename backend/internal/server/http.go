@@ -25,6 +25,7 @@ import (
 // ProviderSet 提供服务器层的依赖
 var ProviderSet = wire.NewSet(
 	ProvideLifecycle,
+	ProvideRegionalAdmissionReadiness,
 	ProvideRouter,
 	ProvideHTTPServer,
 )
@@ -46,12 +47,14 @@ func ProvideRouter(
 	compositeResolver *service.CompositeRouteResolver,
 	redisClient *redis.Client,
 	lifecycle *Lifecycle,
+	regionalReady *service.RegionalAdmissionDependencies,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	r := gin.New()
+	attachRegionalReadiness(lifecycle, cfg, regionalReady)
 	r.Use(middleware2.Recovery())
 	configureTrustedProxies(r, cfg.Server)
 
@@ -105,7 +108,7 @@ func ProvideRouter(
 	lifecycle.onDrain = append(lifecycle.onDrain, manager.Stop)
 	r.Use(manager.Ingress())
 	r.GET("/internal/serverless/probe", manager.ProbeHandler)
-	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient)
+	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient, regionalReady)
 }
 
 func configureTrustedProxies(r *gin.Engine, cfg config.ServerConfig) {

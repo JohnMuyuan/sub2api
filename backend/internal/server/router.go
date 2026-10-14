@@ -36,6 +36,7 @@ func SetupRouter(
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 	redisClient *redis.Client,
+	regionalReady ...service.RegionalAdmissionReadiness,
 ) *gin.Engine {
 	middleware2.SetIngressRejectRecorder(opsService)
 	// 缓存 iframe 页面的 origin 列表，用于动态注入 CSP frame-src
@@ -91,7 +92,7 @@ func SetupRouter(
 	}
 
 	// 注册路由
-	registerRoutes(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient)
+	registerRoutes(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient, regionalReady...)
 
 	return r
 }
@@ -113,20 +114,24 @@ func registerRoutes(
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 	redisClient *redis.Client,
+	regionalReady ...service.RegionalAdmissionReadiness,
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
 	if cfg.Runtime.Role == config.RuntimeRoleGateway {
-		if cfg.Runtime.RegionalSchedulerFile != "" || cfg.Runtime.RegionalAuthFile != "" {
+		if regionalRuntimeConfigured(cfg) {
 			if cfg.Runtime.RegionalAuthFile != "" {
-				r.Use(middleware2.RegionalAPIKeyAuth(apiKeyService, cfg))
+				localAuth := middleware2.RegionalAPIKeyAuth(apiKeyService, cfg)
+				r.Use(localAuth)
+				// Identity was checked above; registered routes must never invoke
+				// the primary subscription/authentication middleware afterward.
+				apiKeyAuth = func(c *gin.Context) { c.Next() }
 			}
-			// Local auth preview still cannot spend or schedule: account ownership and
-			// quota leases are not implemented. Never enter primary-backed middleware.
-			// Health routes above remain available.
-			r.Use(func(c *gin.Context) {
-				c.AbortWithStatusJSON(503, gin.H{"error": "regional gateway admission is not enabled"})
-			})
+			var ready service.RegionalAdmissionReadiness
+			if cfg.Runtime.RegionalAuthFile != "" && len(regionalReady) == 1 {
+				ready = regionalReady[0]
+			}
+			r.Use(middleware2.RegionalAdmission(ready))
 		}
 		// Global settings, payments, and internal worker/admin APIs stay on the
 		// primary. Request replicas only expose authenticated gateway routes.
