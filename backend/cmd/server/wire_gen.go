@@ -166,6 +166,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	notificationEmailService := service.NewNotificationEmailService(settingRepository, emailService)
 	balanceNotifyService := service.ProvideBalanceNotifyService(emailService, settingRepository, accountRepository, notificationEmailService)
 	gatewayService := service.NewGatewayService(accountRepository, groupRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, identityService, httpUpstream, deferredService, claudeTokenProvider, sessionLimitCache, rpmCache, digestSessionStore, settingService, tlsFingerprintProfileService, channelService, modelPricingResolver, compositeRouteResolver, balanceNotifyService, serviceUserPlatformQuotaRepository)
+	regionalMetering, err := repository.ProvideRegionalMetering(db, configConfig, concurrencyCache)
+	if err != nil {
+		return nil, err
+	}
 	openAIOAuthClient := repository.NewOpenAIOAuthClient()
 	privacyClientFactory := providePrivacyClientFactory()
 	openAIOAuthService := service.ProvideOpenAIOAuthService(proxyRepository, openAIOAuthClient, privacyClientFactory)
@@ -177,31 +181,32 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	codexHarvestFlowRepository := repository.NewCodexHarvestFlowRepository(db)
 	codexHarvestService := service.ProvideCodexHarvestService(codexHarvestNodeRepository, settingRepository, configConfig, codexHarvestFlowRepository)
 	openAIGatewayDependencies := service.OpenAIGatewayDependencies{
-		Accounts:      accountRepository,
-		Proxies:       proxyRepository,
-		UsageLogs:     usageLogRepository,
-		UsageBilling:  usageBillingRepository,
-		Users:         userRepository,
-		Subscriptions: userSubscriptionRepository,
-		GroupRates:    userGroupRateRepository,
-		Cache:         gatewayCache,
-		Config:        configConfig,
-		Scheduler:     schedulerSnapshotService,
-		Concurrency:   concurrencyService,
-		Billing:       billingService,
-		RateLimit:     rateLimitService,
-		BillingCache:  billingCacheService,
-		Upstream:      httpUpstream,
-		Deferred:      deferredService,
-		OpenAITokens:  openAITokenProvider,
-		GrokTokens:    grokTokenProvider,
-		Pricing:       modelPricingResolver,
-		Channels:      channelService,
-		BalanceNotify: balanceNotifyService,
-		Settings:      settingService,
-		Quotas:        serviceUserPlatformQuotaRepository,
-		RPMCache:      rpmCache,
-		Harvest:       codexHarvestService,
+		RegionalMetering: regionalMetering,
+		Accounts:         accountRepository,
+		Proxies:          proxyRepository,
+		UsageLogs:        usageLogRepository,
+		UsageBilling:     usageBillingRepository,
+		Users:            userRepository,
+		Subscriptions:    userSubscriptionRepository,
+		GroupRates:       userGroupRateRepository,
+		Cache:            gatewayCache,
+		Config:           configConfig,
+		Scheduler:        schedulerSnapshotService,
+		Concurrency:      concurrencyService,
+		Billing:          billingService,
+		RateLimit:        rateLimitService,
+		BillingCache:     billingCacheService,
+		Upstream:         httpUpstream,
+		Deferred:         deferredService,
+		OpenAITokens:     openAITokenProvider,
+		GrokTokens:       grokTokenProvider,
+		Pricing:          modelPricingResolver,
+		Channels:         channelService,
+		BalanceNotify:    balanceNotifyService,
+		Settings:         settingService,
+		Quotas:           serviceUserPlatformQuotaRepository,
+		RPMCache:         rpmCache,
+		Harvest:          codexHarvestService,
 	}
 	openAIGatewayService := service.ProvideOpenAIGatewayService(openAIGatewayDependencies)
 	geminiOAuthClient := repository.NewGeminiOAuthClient(configConfig)
