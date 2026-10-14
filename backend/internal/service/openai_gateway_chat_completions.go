@@ -61,7 +61,12 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
-	return s.forwardAsChatCompletions(ctx, c, account, body, promptCacheKey, defaultMappedModel, false)
+	meterCtx, finish, err := s.beginRegionalMeter(ctx, c, account, body)
+	if err != nil {
+		return nil, err
+	}
+	result, err := s.forwardAsChatCompletions(meterCtx, c, account, body, promptCacheKey, defaultMappedModel, false)
+	return result, regionalMeterFinishForward(meterCtx, result, err, finish)
 }
 
 func (s *OpenAIGatewayService) forwardAsChatCompletions(

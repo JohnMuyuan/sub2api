@@ -91,6 +91,13 @@ func prismBrowserResponsesURL(baseURL string) string {
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (result *OpenAIForwardResult, resultErr error) {
+	var finishMeter func(*OpenAIForwardResult, error) error
+	var meterErr error
+	ctx, finishMeter, meterErr = s.beginRegionalMeter(ctx, c, account, body)
+	if meterErr != nil {
+		return nil, meterErr
+	}
+	defer func() { resultErr = regionalMeterFinishForward(ctx, result, resultErr, finishMeter) }()
 	body = s.normalizeRequestTimezone(ctx, account, body, "http")
 	if astraSchedulingAppliesToRequest(s.cfg.AstraRouting(ctx), account, gjson.GetBytes(body, "model").String(), getOpenAIGroupIDFromContext(c)) {
 		if err := s.checkAstraSchedulingRoute(ctx, account); err != nil {

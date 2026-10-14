@@ -160,6 +160,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if result == nil {
 		return errors.New("openai usage result is nil")
 	}
+	if result.RegionalMetered {
+		return nil
+	}
+	if s.regionalMetering != nil {
+		return errors.New("legacy billing disabled for metered request")
+	}
 	if result.UsageUnavailable {
 		return errors.New("upstream usage unavailable; token usage was not recorded and request was not billed")
 	}

@@ -91,7 +91,7 @@ func (p *RPMPrimary) Issue(ctx context.Context, g RPMGrant) error {
 	if err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, "UPDATE regional_rpm_budgets SET granted=granted+$3 WHERE account_id=$1 AND minute=$2 AND primary_used+granted<=$4-$3", g.AccountID, g.Minute, g.Units, limit)
+	result, err := tx.ExecContext(ctx, "UPDATE regional_rpm_budgets SET granted=granted+$3 WHERE account_id=$1 AND minute=$2 AND primary_used+granted<=$4::integer-$3::integer", g.AccountID, g.Minute, g.Units, limit)
 	if err != nil {
 		return err
 	}

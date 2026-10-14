@@ -205,7 +205,7 @@ func TestRegionalAdmissionGrantGuardRequiresCompleteFleetAndRevocation(t *testin
 	require.NoError(t, rdb.Do(ctx, "ACL", "SETUSER", legacy, "on", "nopass", "~*", "+@all").Err())
 	t.Cleanup(func() { _ = rdb.Do(ctx, "ACL", "DELUSER", legacy).Err() })
 	cfg := RegionalConcurrencyRuntimeConfig{Mode: "primary", Epoch: epoch, Instance: "pod-a", PrimaryInstances: []string{"pod-a", "pod-b"}, LegacyRedisUser: legacy}
-	guard := regionalGrantGuard(rdb, cfg)
+	guard := regionalLegacyGuard(rdb, cfg)
 	check := func() error {
 		tx, err := integrationDB.BeginTx(ctx, nil)
 		if err != nil {

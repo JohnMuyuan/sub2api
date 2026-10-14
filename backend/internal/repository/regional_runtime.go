@@ -28,6 +28,7 @@ import (
 // Revoking its old Redis identity is required before any regional grant.
 type RegionalConcurrencyRuntimeConfig struct {
 	RPMTargets       []RegionalRPMTarget
+	Cutover          *RegionalCutoverConfig
 	Mode             string
 	Region           string
 	Instance         string
@@ -130,6 +131,14 @@ func provideRegionalConcurrencyCache(base service.ConcurrencyCache, rdb *redis.C
 // TTL expiry does not prove an old request stopped. Require identity revocation,
 // disconnection and complete drained namespaces before issuing regional grants.
 func regionalGrantGuard(rdb *redis.Client, c RegionalConcurrencyRuntimeConfig) func(context.Context, *sql.Tx) error {
+	return func(ctx context.Context, tx *sql.Tx) error {
+		if err := verifyRegionalCutover(ctx, tx, c); err != nil {
+			return err
+		}
+		return regionalLegacyGuard(rdb, c)(ctx, tx)
+	}
+}
+func regionalLegacyGuard(rdb *redis.Client, c RegionalConcurrencyRuntimeConfig) func(context.Context, *sql.Tx) error {
 	return func(ctx context.Context, tx *sql.Tx) error {
 		user, err := rdb.Do(ctx, "ACL", "GETUSER", c.LegacyRedisUser).Result()
 		if err != nil && !errors.Is(err, redis.Nil) {

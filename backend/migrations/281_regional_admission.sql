@@ -43,3 +43,10 @@ CREATE TABLE regional_slot_issue_rejections (
  lease_id VARCHAR(63) PRIMARY KEY,
  payload JSONB NOT NULL
 );
+
+CREATE TABLE regional_cutover_evidence (
+ epoch VARCHAR(128) PRIMARY KEY,
+ inventory_sha256 CHAR(64) NOT NULL,
+ payload JSONB NOT NULL,
+ verified_at TIMESTAMPTZ NOT NULL
+);
