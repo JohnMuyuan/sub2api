@@ -20,8 +20,14 @@ func TestRegionalDeploymentRenderedConcurrency(t *testing.T) {
 	require.NoError(t, err, "%s", output)
 	for _, instance := range []string{"primary-a-0", "primary-b-0", "region-a-0", "region-a-1", "region-b-0", "region-b-1"} {
 		t.Run(instance, func(t *testing.T) {
+			funds, err := readRegionalFundsConfig(filepath.Join(out, instance, "funds.json"))
+			require.NoError(t, err)
 			c, err := readRegionalConcurrencyConfig(filepath.Join(out, instance, "concurrency.json"))
 			require.NoError(t, err)
+			require.Equal(t, c.Mode, funds.Mode)
+			require.Equal(t, c.Region, funds.Region)
+			require.Len(t, funds.Targets, 1)
+			require.EqualValues(t, 1_000_000_000, funds.Targets[0].Amount)
 			require.Equal(t, instance, c.Instance)
 			if c.Mode == "primary" {
 				require.NoError(t, c.Scope.Validate())

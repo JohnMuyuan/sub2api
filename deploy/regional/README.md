@@ -23,9 +23,9 @@
     python3 deploy/regional/render.py --topology /private/topology.json --secrets /private/secrets.json --output /private/rendered
     python3 -m unittest discover -s deploy/regional -p 'test_*.py' -v
 
-目标目录必须不存在；已有目录拒绝覆盖，以免误替换运行身份。目录权限 0700，JSON 权限 0600。每个实例有 runtime.json（合并进该实例实际应用配置，不代替数据库等完整配置）、auth.json、scheduler.json、concurrency.json。三个 runtime 路径分别也可通过 RUNTIME_REGIONAL_AUTH_FILE、RUNTIME_REGIONAL_SCHEDULER_FILE、RUNTIME_REGIONAL_CONCURRENCY_FILE 指定。
+目标目录必须不存在；已有目录拒绝覆盖，以免误替换运行身份。目录权限 0700，JSON 权限 0600。每个实例有 runtime.json（合并进该实例实际应用配置，不代替数据库等完整配置）、auth.json、scheduler.json、concurrency.json、funds.json。四个 runtime 路径分别也可通过 RUNTIME_REGIONAL_AUTH_FILE、RUNTIME_REGIONAL_SCHEDULER_FILE、RUNTIME_REGIONAL_CONCURRENCY_FILE、RUNTIME_REGIONAL_FUNDS_FILE 指定。
 
-生成结果中的 MaximumLifetime 为 Go time.Duration 的纳秒整数；MaximumGrant 为 10^-9 USD 的十进制字符串，当前固定 1 USD 仅满足 slots-only handler 的 Scope 校验，不启用资金授权或代表真实金额限额。资金、RPM 与状态协调配置必须使用后续对应 runtime 的配置，不能把此数值当成所有维度的限制。
+生成结果中的 MaximumLifetime 为 Go time.Duration 的纳秒整数；MaximumGrant 为 10^-9 USD 的十进制字符串，由该区域 funds_targets 最大金额生成；它是 control 单次 grant 上限，不是用户余额或总预算。funds.json 包含精确定价与用户/Key/账号三元组的预算；prices 需用实际权威模型费率与完整窗口替换，示例 mock-text-only 是虚构价格。amount_nano_usd 使用十进制字符串并按主站八位美元精度对齐；禁止浮点金额。maximum_outbox 为未确认事件的接纳阈值。
 
 ## 挂载与端口
 

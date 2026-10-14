@@ -26,7 +26,7 @@ def identifier(value):
 
 
 def validate(spec, secrets):
-    fields(spec, 'epoch legacy_redis_user primary_instances cutover regions')
+    fields(spec, 'epoch legacy_redis_user primary_instances cutover prices maximum_outbox regions')
     fields(secrets, 'regions')
     identifier(spec['epoch'])
     identifier(spec['legacy_redis_user'])
@@ -35,6 +35,17 @@ def validate(spec, secrets):
     for instance in primary:
         identifier(instance)
     require(len(set(primary)) == len(primary), 'duplicate primary instance')
+    require(type(spec['maximum_outbox']) is int and 1 <= spec['maximum_outbox'] <= 10000, 'invalid outbox admission limit')
+    require(isinstance(spec['prices'], list) and spec['prices'], 'immutable price contracts required')
+    models = set()
+    for price in spec['prices']:
+        fields(price, 'model input_nano_per_million output_nano_per_million cache_creation_nano_per_million cache_read_nano_per_million max_input_tokens max_output_tokens')
+        require(isinstance(price['model'], str) and price['model'] and price['model'] not in models, 'duplicate or empty price model')
+        models.add(price['model'])
+        for name in ('input_nano_per_million', 'output_nano_per_million', 'cache_creation_nano_per_million', 'cache_read_nano_per_million'):
+            require(type(price[name]) is int and 0 <= price[name] <= 9223372036854775807, 'invalid exact price rate')
+        for name in ('max_input_tokens', 'max_output_tokens'):
+            require(type(price[name]) is int and 1 <= price[name] <= 2147483647, 'invalid model window')
     cutover = spec['cutover']
     fields(cutover, 'endpoint namespace workloads')
     endpoint = urlsplit(cutover['endpoint'])
@@ -52,7 +63,7 @@ def validate(spec, secrets):
     require(isinstance(spec['regions'], list) and spec['regions'], 'regions required')
     regions, assigned, instances = set(), set(), set(primary)
     for region in spec['regions']:
-        fields(region, 'id primary instance_ids endpoint primary_pin regional_pin account_ids user_ids api_key_ids group_id slots rpm_units lifetime_seconds')
+        fields(region, 'id primary instance_ids endpoint primary_pin regional_pin account_ids user_ids api_key_ids group_id slots rpm_units lifetime_seconds funds_targets')
         identifier(region['id'])
         require(region['id'] not in regions, 'duplicate region')
         regions.add(region['id'])
@@ -75,6 +86,18 @@ def validate(spec, secrets):
         require(type(region['slots']) is int and 1 <= region['slots'] <= 10000, 'invalid slot capacity')
         require(type(region['rpm_units']) is int and 1 <= region['rpm_units'] <= 1000000, 'invalid RPM budget')
         require(type(region['lifetime_seconds']) is int and 30 <= region['lifetime_seconds'] <= 3600, 'invalid lifetime')
+        require(isinstance(region['funds_targets'], list) and region['funds_targets'], 'funded assignments required')
+        identities = set()
+        for target in region['funds_targets']:
+            fields(target, 'user_id api_key_id account_id amount_nano_usd')
+            for name, allowed in (('user_id', region['user_ids']), ('api_key_id', region['api_key_ids']), ('account_id', region['account_ids'])):
+                require(type(target[name]) is int and target[name] in allowed, 'funded target outside assignment')
+            identity = (target['user_id'], target['api_key_id'], target['account_id'])
+            require(identity not in identities, 'duplicate funded target')
+            identities.add(identity)
+            amount = target['amount_nano_usd']
+            require(isinstance(amount, str) and re.fullmatch(r'[1-9][0-9]{0,18}', amount), 'exact positive nano USD string required')
+            require(int(amount) <= 9223372036854775807 and int(amount) % 10 == 0, 'funded amount outside primary precision')
         material = secrets['regions'][region['id']]
         fields(material, 'key_id encryption_key auth_lookup_key')
         identifier(material['key_id'])
@@ -101,14 +124,15 @@ def documents(spec, secrets):
                 files[f'{instance}/{kind}.json'] = stream
             concurrency = dict(Mode='primary' if primary else 'regional', Region=region['id'], Instance=instance, Epoch=spec['epoch'], PrimaryInstances=spec['primary_instances'] if primary else [], LegacyRedisUser=spec['legacy_redis_user'] if primary else '', Listen='0.0.0.0:9445' if primary else '', Endpoint='' if primary else region['endpoint'].rstrip('/')+':9445', CAFile=tls+'ca.pem', CertFile=tls+'cert.pem', KeyFile=tls+'key.pem', ServerPin=region['primary_pin'], LifetimeSeconds=region['lifetime_seconds'])
             if primary:
-                concurrency['Scope'] = dict(Region=region['id'], CertificateSHA256=region['regional_pin'], UserIDs=region['user_ids'], AccountIDs=region['account_ids'], APIKeyIDs=region['api_key_ids'], MaximumGrant='1000000000', MaximumSlots=region['slots'], MaximumRPM=region['rpm_units'], MaximumLifetime=region['lifetime_seconds']*1000000000)
+                concurrency['Scope'] = dict(Region=region['id'], CertificateSHA256=region['regional_pin'], UserIDs=region['user_ids'], AccountIDs=region['account_ids'], APIKeyIDs=region['api_key_ids'], MaximumGrant=str(max(int(t['amount_nano_usd']) for t in region['funds_targets'])), MaximumSlots=region['slots'], MaximumRPM=region['rpm_units'], MaximumLifetime=region['lifetime_seconds']*1000000000)
                 cutover = spec['cutover']
                 concurrency['Cutover'] = dict(Endpoint=cutover['endpoint'], Namespace=cutover['namespace'], Workloads={name: value['uid'] for name, value in cutover['workloads'].items()}, CAFile='/run/sub2api-inventory/ca.crt', TokenFile='/run/sub2api-inventory/token')
             else:
                 concurrency['Targets'] = [dict(Resource=dict(kind=kind, resource_id=value), Capacity=region['slots']) for kind, values in [('account', region['account_ids']), ('user', region['user_ids']), ('api_key', region['api_key_ids'])] for value in values]
                 concurrency['RPMTargets'] = [dict(AccountID=value, Units=region['rpm_units']) for value in region['account_ids']]
             files[f'{instance}/concurrency.json'] = concurrency
-            files[f'{instance}/runtime.json'] = dict(runtime=dict(role='full' if primary else 'gateway', regional_auth_file='/run/sub2api-regional/auth.json', regional_scheduler_file='/run/sub2api-regional/scheduler.json', regional_concurrency_file='/run/sub2api-regional/concurrency.json'))
+            files[f'{instance}/funds.json'] = dict(Mode='primary' if primary else 'regional', Region=region['id'], Prices=copy.deepcopy(spec['prices']), Targets=[dict(UserID=t['user_id'], APIKeyID=t['api_key_id'], AccountID=t['account_id'], Amount=t['amount_nano_usd']) for t in region['funds_targets']], MaximumOutbox=spec['maximum_outbox'])
+            files[f'{instance}/runtime.json'] = dict(runtime=dict(role='full' if primary else 'gateway', regional_auth_file='/run/sub2api-regional/auth.json', regional_scheduler_file='/run/sub2api-regional/scheduler.json', regional_concurrency_file='/run/sub2api-regional/concurrency.json', regional_funds_file='/run/sub2api-regional/funds.json'))
     return files
 
 

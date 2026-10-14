@@ -23,7 +23,7 @@ class RenderTests(unittest.TestCase):
 
     def test_two_regions_share_accounts_but_not_snapshot_identity(self):
         files = render.documents(self.spec, self.secrets)
-        self.assertEqual(len(files), 24)
+        self.assertEqual(len(files), 30)
         states = set()
         for region in self.spec['regions']:
             primary = files[region['primary'] + '/concurrency.json']
@@ -40,6 +40,8 @@ class RenderTests(unittest.TestCase):
                 self.assertEqual(files[f'{instance}/scheduler.json']['allowed_account_ids'], [101])
                 self.assertEqual(files[f'{instance}/auth.json']['allowed_user_ids'], [201])
                 self.assertEqual(files[f'{instance}/runtime.json']['runtime']['role'], 'gateway')
+                self.assertEqual(files[f'{instance}/funds.json']['Targets'][0]['Amount'], '1000000000')
+                self.assertEqual(files[f'{instance}/funds.json']['Prices'], self.spec['prices'])
 
     def test_invalid_topology_cannot_write_partial_output(self):
         changes = [
@@ -54,6 +56,12 @@ class RenderTests(unittest.TestCase):
             lambda s: s['regions'][0].update(primary_pin='x' * 64),
             lambda s: s['regions'][0].update(lifetime_seconds=3601),
             lambda s: s['regions'][0].update(unknown=True),
+            lambda s: s['regions'][0]['funds_targets'][0].update(amount_nano_usd=1.0),
+            lambda s: s['regions'][0]['funds_targets'][0].update(amount_nano_usd='11'),
+            lambda s: s['regions'][0]['funds_targets'][0].update(api_key_id=999),
+            lambda s: s['prices'][0].update(input_nano_per_million=0.1),
+            lambda s: s['prices'].append(copy.deepcopy(s['prices'][0])),
+            lambda s: s['cutover']['workloads']['primary-a'].update(replicas=2),
         ]
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / 'rendered'
@@ -71,7 +79,7 @@ class RenderTests(unittest.TestCase):
             target = Path(directory) / 'rendered'
             old_umask = os.umask(0)
             try:
-                self.assertEqual(render.render(self.spec, self.secrets, target), 24)
+                self.assertEqual(render.render(self.spec, self.secrets, target), 30)
             finally:
                 os.umask(old_umask)
             before = {p.relative_to(target): p.read_bytes() for p in target.rglob('*.json')}
