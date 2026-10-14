@@ -136,3 +136,13 @@ func TestRegionalMeterOAuthReservesFullOutputWindow(t *testing.T) {
 	a.fullOutputWindow = false
 	require.Error(t, regionalMeterValidatePayload(ctx, []byte("{\"model\":\"mock-text\"}")))
 }
+
+func TestRegionalMeterRejectsNestedTools(t *testing.T) {
+	for _, body := range []string{
+		"{\"model\":\"mock-text\",\"max_tokens\":10,\"messages\":[{\"role\":\"assistant\",\"content\":\"ok\",\"tool_calls\":[{}]}]}",
+		"{\"model\":\"mock-text\",\"max_tokens\":10,\"messages\":[{\"role\":\"assistant\",\"content\":\"ok\",\"function_call\":{}}]}",
+	} {
+		_, _, err := regionalTextOutputBound([]byte(body))
+		require.Error(t, err)
+	}
+}

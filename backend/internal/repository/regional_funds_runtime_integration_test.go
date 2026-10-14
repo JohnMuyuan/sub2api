@@ -111,6 +111,7 @@ func TestRegionalFundsCloseRestartAndUnknownHold(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = integrationDB.Exec("DELETE FROM regional_broker_operations WHERE operation_id=$1", "close:"+lease.LeaseID)
 	})
+	require.NoError(t, local.Drain(ctx, lease.LeaseID))
 	require.NoError(t, drainRegionalFunds(ctx, integrationDB, broker, local))
 	var count int
 	require.NoError(t, integrationDB.QueryRow("SELECT COUNT(*) FROM regional_broker_operations WHERE operation_id=$1", "close:"+lease.LeaseID).Scan(&count))

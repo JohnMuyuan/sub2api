@@ -88,6 +88,9 @@ func ProvideRegionalMetering(db *sql.DB, cfg *config.Config, cache service.Concu
 	if cfg == nil || cfg.Runtime.RegionalFundsFile == "" {
 		return nil, nil
 	}
+	if cfg.BatchImage.QueueEnabled {
+		return nil, errors.New("batch image queue must be drained and disabled before coordinated funds")
+	}
 	c, err := readRegionalFundsConfig(cfg.Runtime.RegionalFundsFile)
 	if err != nil {
 		return nil, err
@@ -243,7 +246,7 @@ func ProvideRegionalMetering(db *sql.DB, cfg *config.Config, cache service.Concu
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
-			cycle, cancel := context.WithTimeout(ctx, 20*time.Second)
+			cycle, cancel := context.WithTimeout(ctx, 5*time.Second)
 			var cycleErr error
 			if c.Mode == "primary" {
 				_, cycleErr = db.ExecContext(cycle, "INSERT INTO regional_funds_members(epoch,instance_id) VALUES($1,$2) ON CONFLICT(epoch,instance_id) DO UPDATE SET heartbeat_at=clock_timestamp()", capacity.runtimeConfig.Epoch, capacity.runtimeConfig.Instance)

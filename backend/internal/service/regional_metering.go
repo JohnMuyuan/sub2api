@@ -224,7 +224,9 @@ func regionalTextOutputBound(body []byte) (string, int64, error) {
 			Role    string
 			Content string
 		}
-		if err := json.Unmarshal(raw, &messages); err != nil || len(messages) == 0 {
+		d := json.NewDecoder(bytes.NewReader(raw))
+		d.DisallowUnknownFields()
+		if err := d.Decode(&messages); err != nil || len(messages) == 0 {
 			return "", 0, errors.New("only text messages are bounded")
 		}
 		for _, m := range messages {
