@@ -89,7 +89,8 @@ def validate(spec, secrets):
         require(isinstance(region['funds_targets'], list) and region['funds_targets'], 'funded assignments required')
         identities = set()
         for target in region['funds_targets']:
-            fields(target, 'user_id api_key_id account_id amount_nano_usd')
+            fields(target, 'billing_mode user_id api_key_id account_id amount_nano_usd')
+            require(target['billing_mode'] in ('balance', 'subscription'), 'explicit balance or subscription mode required')
             for name, allowed in (('user_id', region['user_ids']), ('api_key_id', region['api_key_ids']), ('account_id', region['account_ids'])):
                 require(type(target[name]) is int and target[name] in allowed, 'funded target outside assignment')
             identity = (target['user_id'], target['api_key_id'], target['account_id'])
@@ -131,7 +132,7 @@ def documents(spec, secrets):
                 concurrency['Targets'] = [dict(Resource=dict(kind=kind, resource_id=value), Capacity=region['slots']) for kind, values in [('account', region['account_ids']), ('user', region['user_ids']), ('api_key', region['api_key_ids'])] for value in values]
                 concurrency['RPMTargets'] = [dict(AccountID=value, Units=region['rpm_units']) for value in region['account_ids']]
             files[f'{instance}/concurrency.json'] = concurrency
-            files[f'{instance}/funds.json'] = dict(Mode='primary' if primary else 'regional', Region=region['id'], Prices=copy.deepcopy(spec['prices']), Targets=[dict(UserID=t['user_id'], APIKeyID=t['api_key_id'], AccountID=t['account_id'], Amount=t['amount_nano_usd']) for t in region['funds_targets']], MaximumOutbox=spec['maximum_outbox'])
+            files[f'{instance}/funds.json'] = dict(Mode='primary' if primary else 'regional', Region=region['id'], Prices=copy.deepcopy(spec['prices']), Targets=[dict(billing_mode='' if t['billing_mode'] == 'balance' else 'subscription', user_id=t['user_id'], api_key_id=t['api_key_id'], account_id=t['account_id'], amount=t['amount_nano_usd']) for t in region['funds_targets']], MaximumOutbox=spec['maximum_outbox'])
             files[f'{instance}/runtime.json'] = dict(runtime=dict(role='full' if primary else 'gateway', regional_auth_file='/run/sub2api-regional/auth.json', regional_scheduler_file='/run/sub2api-regional/scheduler.json', regional_concurrency_file='/run/sub2api-regional/concurrency.json', regional_funds_file='/run/sub2api-regional/funds.json'))
     return files
 

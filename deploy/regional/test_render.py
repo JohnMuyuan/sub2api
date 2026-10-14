@@ -40,7 +40,8 @@ class RenderTests(unittest.TestCase):
                 self.assertEqual(files[f'{instance}/scheduler.json']['allowed_account_ids'], [101])
                 self.assertEqual(files[f'{instance}/auth.json']['allowed_user_ids'], [201])
                 self.assertEqual(files[f'{instance}/runtime.json']['runtime']['role'], 'gateway')
-                self.assertEqual(files[f'{instance}/funds.json']['Targets'][0]['Amount'], '1000000000')
+                self.assertEqual(files[f'{instance}/funds.json']['Targets'][0]['amount'], '1000000000')
+                self.assertEqual(files[f'{instance}/funds.json']['Targets'][0]['billing_mode'], '')
                 self.assertEqual(files[f'{instance}/funds.json']['Prices'], self.spec['prices'])
 
     def test_invalid_topology_cannot_write_partial_output(self):
@@ -59,6 +60,7 @@ class RenderTests(unittest.TestCase):
             lambda s: s['regions'][0]['funds_targets'][0].update(amount_nano_usd=1.0),
             lambda s: s['regions'][0]['funds_targets'][0].update(amount_nano_usd='11'),
             lambda s: s['regions'][0]['funds_targets'][0].update(api_key_id=999),
+            lambda s: s['regions'][0]['funds_targets'][0].update(billing_mode='arbitrary'),
             lambda s: s['prices'][0].update(input_nano_per_million=0.1),
             lambda s: s['prices'].append(copy.deepcopy(s['prices'][0])),
             lambda s: s['cutover']['workloads']['primary-a'].update(replicas=2),

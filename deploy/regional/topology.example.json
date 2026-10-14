@@ -34,7 +34,8 @@
           "user_id": 201,
           "api_key_id": 301,
           "account_id": 101,
-          "amount_nano_usd": "1000000000"
+          "amount_nano_usd": "1000000000",
+          "billing_mode": "balance"
         }
       ]
     },
@@ -66,7 +67,8 @@
           "user_id": 201,
           "api_key_id": 301,
           "account_id": 101,
-          "amount_nano_usd": "1000000000"
+          "amount_nano_usd": "1000000000",
+          "billing_mode": "balance"
         }
       ]
     }
