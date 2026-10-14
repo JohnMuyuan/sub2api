@@ -108,6 +108,14 @@ func (c *regionalAccountCoordinator) GetRPMBatch(ctx context.Context, ids []int6
 }
 func (c *regionalAccountCoordinator) RegionalAccountAllowed(ctx context.Context, id int64) error {
 	if c.local == nil {
+		var allowed bool
+		err := c.db.QueryRowContext(ctx, "SELECT status='active' AND schedulable AND deleted_at IS NULL AND (rate_limit_reset_at IS NULL OR rate_limit_reset_at<=clock_timestamp()) AND (temp_unschedulable_until IS NULL OR temp_unschedulable_until<=clock_timestamp()) AND (overload_until IS NULL OR overload_until<=clock_timestamp()) FROM accounts WHERE id=$1", id).Scan(&allowed)
+		if err != nil {
+			return err
+		}
+		if !allowed {
+			return accountstate.ErrUnavailable
+		}
 		return nil
 	}
 	return c.states.Allowed(ctx, id)
@@ -146,3 +154,15 @@ func (c *regionalAccountCoordinator) Check(ctx context.Context) error {
 }
 
 var _ service.StrictRPMCache = (*regionalAccountCoordinator)(nil)
+
+// A handler reservation may cross a database minute while queued. Validate the
+// exact authority reset before transferring that unit into an actual send.
+func (c *regionalAccountCoordinator) RegionalRPMReservationValid(ctx context.Context, id int64, reset time.Time) (bool, error) {
+	var valid bool
+	if c.local == nil {
+		err := c.db.QueryRowContext(ctx, "SELECT to_timestamp((floor(extract(epoch FROM clock_timestamp())/60)::bigint+1)*60)=$1", reset).Scan(&valid)
+		return valid, err
+	}
+	err := c.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM regional_local_account_states WHERE account_id=$1 AND NOT invalid AND cooldown_until<=clock_timestamp() AND valid_until>clock_timestamp() AND clock_valid_until>clock_timestamp() AND extract(second FROM clock_timestamp())>=2 AND extract(second FROM clock_timestamp())<58 AND to_timestamp((floor(extract(epoch FROM clock_timestamp())/60)::bigint+1)*60)=$2)", id, reset).Scan(&valid)
+	return valid, err
+}
