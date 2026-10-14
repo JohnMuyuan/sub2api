@@ -174,9 +174,7 @@ func (s *States) Sync(ctx context.Context, remote StateRemote, ids []int64) erro
 		if err = remote.ReportState(ctx, e); err != nil {
 			return err
 		}
-		if _, err = s.DB.ExecContext(ctx, "UPDATE regional_account_state_events SET acknowledged=true WHERE event_id=$1", e.ID); err != nil {
-			return err
-		}
+
 	}
 	for _, id := range ids {
 		var before time.Time
@@ -202,5 +200,11 @@ func (s *States) Sync(ctx context.Context, remote StateRemote, ids []int64) erro
 		}
 
 	}
+	for _, e := range events {
+		if _, err = s.DB.ExecContext(ctx, "UPDATE regional_account_state_events SET acknowledged=true WHERE event_id=$1", e.ID); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

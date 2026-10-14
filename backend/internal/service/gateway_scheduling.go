@@ -1417,6 +1417,10 @@ func (s *GatewayService) isAccountSchedulableForRPM(ctx context.Context, account
 // 高并发下可能短暂超出 RPM 限制。这是与 WindowCost 一致的 soft-limit
 // 设计权衡——可接受的少量超额优于加锁带来的延迟和复杂度。
 func (s *GatewayService) IncrementAccountRPM(ctx context.Context, accountID int64) error {
+	if _, coordinated := s.rpmCache.(RegionalAccountGuard); coordinated {
+		return nil
+	} // actual sends reserve atomically
+
 	if s.rpmCache == nil {
 		return nil
 	}
