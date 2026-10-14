@@ -25,6 +25,7 @@ type AntigravityTokenCache = GeminiTokenCache
 
 // AntigravityTokenProvider manages access_token for antigravity accounts.
 type AntigravityTokenProvider struct {
+	regionalSnapshot        *SchedulerSnapshotService
 	accountRepo             AccountRepository
 	tokenCache              AntigravityTokenCache
 	antigravityOAuthService *AntigravityOAuthService
@@ -66,6 +67,9 @@ func (p *AntigravityTokenProvider) SetTempUnschedCache(cache TempUnschedCache) {
 
 // GetAccessToken returns a valid access_token.
 func (p *AntigravityTokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
+	if p.regionalSnapshot != nil {
+		return localRegionalAccessToken(ctx, p.regionalSnapshot, account)
+	}
 	if account == nil {
 		return "", errors.New("account is nil")
 	}

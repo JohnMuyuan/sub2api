@@ -1383,10 +1383,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if a, ok := parentCacheL2[id]; ok {
 			return a
 		}
-		if s.accountRepo == nil {
+		if s.accountRepo == nil && (s.schedulerSnapshot == nil || s.schedulerSnapshot.localSnapshotReader == nil) {
 			return nil
 		}
-		a, _ := s.accountRepo.GetByID(ctx, id)
+		a, _ := s.accountForRegionalRequest(ctx, id)
 		parentCacheL2[id] = a
 		return a
 	}
@@ -1749,10 +1749,10 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 // L2 候选循环改用带 per-pass 缓存的 parentLookupL2,不走此方法。
 func (s *OpenAIGatewayService) parentAccountLookup(ctx context.Context) func(int64) *Account {
 	return func(id int64) *Account {
-		if s.accountRepo == nil {
+		if s.accountRepo == nil && (s.schedulerSnapshot == nil || s.schedulerSnapshot.localSnapshotReader == nil) {
 			return nil
 		}
-		a, _ := s.accountRepo.GetByID(ctx, id)
+		a, _ := s.accountForRegionalRequest(ctx, id)
 		return a
 	}
 }
@@ -1773,7 +1773,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 		return nil
 	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
-	if s.schedulerSnapshot == nil || s.accountRepo == nil {
+	if s.schedulerSnapshot == nil || (s.accountRepo == nil && s.schedulerSnapshot.localSnapshotReader == nil) {
 		if s.openAIGroupRequiresPrivacySet(ctx, groupID) && !account.IsPrivacySet() {
 			return nil
 		}
@@ -1792,7 +1792,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 		return account
 	}
 
-	latest, err := s.accountRepo.GetByID(ctx, account.ID)
+	latest, err := s.accountForRegionalRequest(ctx, account.ID)
 	if err != nil || latest == nil {
 		return nil
 	}

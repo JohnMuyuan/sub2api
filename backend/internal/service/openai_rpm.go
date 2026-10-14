@@ -29,13 +29,32 @@ func WithOpenAIRPMReservation(ctx context.Context, account *Account, state Accou
 }
 
 func (s *OpenAIGatewayService) acquireOpenAIRPMForSend(ctx context.Context, account *Account) error {
+	if account != nil && s != nil {
+		if guard, ok := s.rpmCache.(RegionalAccountGuard); ok {
+			if err := guard.RegionalAccountAllowed(ctx, account.ID); err != nil {
+				return err
+			}
+		}
+	}
+
 	if account == nil || !account.IsOpenAIOAuth() || account.GetBaseRPM() <= 0 {
 		return nil
 	}
 	if reservation, ok := ctx.Value(openAIRPMReservationKey{}).(*openAIRPMReservation); ok &&
-		reservation.accountID == account.RPMAccountID() && time.Now().Before(reservation.resetAt) &&
-		reservation.claimed.CompareAndSwap(false, true) {
-		return nil
+		reservation.accountID == account.RPMAccountID() && !reservation.claimed.Load() {
+		valid := time.Now().Before(reservation.resetAt)
+		if authority, ok := s.rpmCache.(interface {
+			RegionalRPMReservationValid(context.Context, int64, time.Time) (bool, error)
+		}); ok {
+			var err error
+			valid, err = authority.RegionalRPMReservationValid(ctx, account.RPMAccountID(), reservation.resetAt)
+			if err != nil {
+				return fmt.Errorf("%w: reservation clock validation failed", ErrOpenAIRPMUnavailable)
+			}
+		}
+		if valid && reservation.claimed.CompareAndSwap(false, true) {
+			return nil
+		}
 	}
 	_, _, err := s.TryAcquireOpenAIOAuthRPM(ctx, account)
 	return err

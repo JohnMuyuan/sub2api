@@ -27,6 +27,7 @@ const Prefix = "/internal/regional/control"
 const maxBody = 256 << 10
 
 type Scope struct {
+	MaximumRPM        int
 	Region            string
 	CertificateSHA256 string
 	UserIDs           []int64

@@ -77,6 +77,7 @@ type OpenAITokenCache = GeminiTokenCache
 
 // OpenAITokenProvider manages access_token for OpenAI OAuth accounts.
 type OpenAITokenProvider struct {
+	regionalSnapshot   *SchedulerSnapshotService
 	accountRepo        AccountRepository
 	tokenCache         OpenAITokenCache
 	openAIOAuthService *OpenAIOAuthService
@@ -132,6 +133,9 @@ func (p *OpenAITokenProvider) ensureMetrics() {
 
 // GetAccessToken returns a valid access_token.
 func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
+	if p.regionalSnapshot != nil {
+		return localRegionalAccessToken(ctx, p.regionalSnapshot, account)
+	}
 	p.ensureMetrics()
 	if account == nil {
 		return "", errors.New("account is nil")

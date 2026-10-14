@@ -184,3 +184,39 @@ func TestOpenAIRPMHeadroomAndSharedParent(t *testing.T) {
 		t.Fatalf("stale scheduler snapshot must not bypass final reservation: %v", err)
 	}
 }
+
+type regionalRPMClockTestCache struct {
+	*openAIRPMTestCache
+	valid    bool
+	clockErr error
+}
+
+func (c *regionalRPMClockTestCache) RegionalRPMReservationValid(context.Context, int64, time.Time) (bool, error) {
+	return c.valid, c.clockErr
+}
+func TestOpenAIRPMRegionalReservationUsesAuthorityClock(t *testing.T) {
+	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"base_rpm": 1}}
+	for _, tc := range []struct {
+		name     string
+		valid    bool
+		clockErr error
+		want     error
+	}{
+		{"expired authority minute", false, nil, ErrOpenAIRPMExhausted},
+		{"clock unavailable", false, errors.New("offline"), ErrOpenAIRPMUnavailable},
+		{"current authority minute", true, nil, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cache := &regionalRPMClockTestCache{openAIRPMTestCache: &openAIRPMTestCache{counts: map[int64]int{1: 1}}, valid: tc.valid, clockErr: tc.clockErr}
+			svc := &OpenAIGatewayService{rpmCache: cache}
+			ctx := WithOpenAIRPMReservation(context.Background(), account, AccountRPMState{Enabled: true, ResetAt: time.Now().Add(time.Hour)})
+			err := svc.acquireOpenAIRPMForSend(ctx, account)
+			if tc.want == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, tc.want)
+			}
+			require.Equal(t, 1, cache.counts[1])
+		})
+	}
+}

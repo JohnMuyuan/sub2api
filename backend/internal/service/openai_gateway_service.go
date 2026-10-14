@@ -1297,8 +1297,11 @@ func hashSensitiveValueForLog(raw string) string {
 // GetAccessToken gets the access token for an OpenAI account
 func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Account) (string, string, error) {
 	defer requesttiming.Observe(ctx, "upstream_credentials")()
-	if account.IsShadow() {
-		credAccount, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+	if account == nil {
+		return "", "", ErrLocalSchedulerSnapshotUnavailable
+	}
+	if account.IsShadow() || (s.schedulerSnapshot != nil && s.schedulerSnapshot.localSnapshotReader != nil) {
+		credAccount, err := s.regionalCredentialAccount(ctx, account)
 		if err != nil {
 			return "", "", err
 		}

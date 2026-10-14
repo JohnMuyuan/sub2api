@@ -94,8 +94,15 @@ func ProvideAuthService(
 }
 
 // ProvideOAuthRefreshAPI creates OAuthRefreshAPI with the default lock TTL.
-func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCache) *OAuthRefreshAPI {
-	return NewOAuthRefreshAPI(accountRepo, tokenCache)
+func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCache, cfg *config.Config, db *sql.DB) *OAuthRefreshAPI {
+	api := NewOAuthRefreshAPI(accountRepo, tokenCache)
+	if cfg != nil && cfg.Runtime.RegionalConcurrencyFile != "" {
+		api.regionalSubscriber = cfg.Runtime.Role == config.RuntimeRoleGateway
+		if !api.regionalSubscriber {
+			api.regionalDB = db
+		}
+	}
+	return api
 }
 
 func ProvideBatchImageModelPricingResolver(resolver *ModelPricingResolver) *BatchImageModelPricingResolver {
@@ -181,11 +188,16 @@ func ProvideClaudeTokenProvider(
 	tokenCache GeminiTokenCache,
 	oauthService *OAuthService,
 	refreshAPI *OAuthRefreshAPI,
+	cfg *config.Config,
+	snapshot *SchedulerSnapshotService,
 ) *ClaudeTokenProvider {
 	p := NewClaudeTokenProvider(accountRepo, tokenCache, oauthService)
 	executor := NewClaudeTokenRefresher(oauthService)
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(ClaudeProviderRefreshPolicy())
+	if cfg != nil && cfg.Runtime.Role == config.RuntimeRoleGateway && cfg.Runtime.RegionalSchedulerFile != "" {
+		p.regionalSnapshot = snapshot
+	}
 	return p
 }
 
@@ -195,11 +207,16 @@ func ProvideOpenAITokenProvider(
 	tokenCache GeminiTokenCache,
 	openaiOAuthService *OpenAIOAuthService,
 	refreshAPI *OAuthRefreshAPI,
+	cfg *config.Config,
+	snapshot *SchedulerSnapshotService,
 ) *OpenAITokenProvider {
 	p := NewOpenAITokenProvider(accountRepo, tokenCache, openaiOAuthService)
 	executor := NewOpenAITokenRefresher(openaiOAuthService, accountRepo)
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(OpenAIProviderRefreshPolicy())
+	if cfg != nil && cfg.Runtime.Role == config.RuntimeRoleGateway && cfg.Runtime.RegionalSchedulerFile != "" {
+		p.regionalSnapshot = snapshot
+	}
 	return p
 }
 
@@ -393,11 +410,16 @@ func ProvideGeminiTokenProvider(
 	tokenCache GeminiTokenCache,
 	geminiOAuthService *GeminiOAuthService,
 	refreshAPI *OAuthRefreshAPI,
+	cfg *config.Config,
+	snapshot *SchedulerSnapshotService,
 ) *GeminiTokenProvider {
 	p := NewGeminiTokenProvider(accountRepo, tokenCache, geminiOAuthService)
 	executor := NewGeminiTokenRefresher(geminiOAuthService)
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(GeminiProviderRefreshPolicy())
+	if cfg != nil && cfg.Runtime.Role == config.RuntimeRoleGateway && cfg.Runtime.RegionalSchedulerFile != "" {
+		p.regionalSnapshot = snapshot
+	}
 	return p
 }
 
@@ -408,12 +430,17 @@ func ProvideAntigravityTokenProvider(
 	antigravityOAuthService *AntigravityOAuthService,
 	refreshAPI *OAuthRefreshAPI,
 	tempUnschedCache TempUnschedCache,
+	cfg *config.Config,
+	snapshot *SchedulerSnapshotService,
 ) *AntigravityTokenProvider {
 	p := NewAntigravityTokenProvider(accountRepo, tokenCache, antigravityOAuthService)
 	executor := NewAntigravityTokenRefresher(antigravityOAuthService)
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
 	p.SetTempUnschedCache(tempUnschedCache)
+	if cfg != nil && cfg.Runtime.Role == config.RuntimeRoleGateway && cfg.Runtime.RegionalSchedulerFile != "" {
+		p.regionalSnapshot = snapshot
+	}
 	return p
 }
 
@@ -424,12 +451,17 @@ func ProvideGrokTokenProvider(
 	grokOAuthService *GrokOAuthService,
 	refreshAPI *OAuthRefreshAPI,
 	tempUnschedCache TempUnschedCache,
+	cfg *config.Config,
+	snapshot *SchedulerSnapshotService,
 ) *GrokTokenProvider {
 	p := NewGrokTokenProvider(accountRepo, tokenCache)
 	executor := NewGrokTokenRefresher(grokOAuthService)
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(GrokProviderRefreshPolicy())
 	p.SetTempUnschedCache(tempUnschedCache)
+	if cfg != nil && cfg.Runtime.Role == config.RuntimeRoleGateway && cfg.Runtime.RegionalSchedulerFile != "" {
+		p.regionalSnapshot = snapshot
+	}
 	return p
 }
 
