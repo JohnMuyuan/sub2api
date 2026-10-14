@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/lib/pq"
 	"time"
 )
 
@@ -141,12 +142,66 @@ func (s *States) Allowed(ctx context.Context, id int64) error {
 	return nil
 }
 
-type StateRemote interface {
-	ReportState(context.Context, Event) error
-	GetState(context.Context, int64) (State, error)
+// StateBatch bounds one authority observation and one regional installation.
+// ServerTime is measured by the authority DB after the account read completes.
+type StateBatch struct {
+	States     []State
+	ServerTime time.Time
 }
 
-func (s *States) Sync(ctx context.Context, remote StateRemote, ids []int64) error {
+func (s *States) SnapshotBatch(ctx context.Context, ids []int64) (StateBatch, error) {
+	var out StateBatch
+	if len(ids) == 0 || len(ids) > 100 {
+		return out, ErrConflict
+	}
+	seen := map[int64]bool{}
+	for _, id := range ids {
+		if id <= 0 || seen[id] {
+			return out, ErrConflict
+		}
+		seen[id] = true
+	}
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
+	if err != nil {
+		return out, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, "SELECT id,floor(extract(epoch FROM updated_at)*1000000)::bigint,GREATEST(COALESCE(rate_limit_reset_at,to_timestamp(0)),COALESCE(temp_unschedulable_until,to_timestamp(0)),COALESCE(overload_until,to_timestamp(0))),status<>'active' OR NOT schedulable OR deleted_at IS NOT NULL FROM accounts WHERE id=ANY($1) ORDER BY id", pq.Array(ids))
+	if err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var v State
+		if err = rows.Scan(&v.AccountID, &v.Revision, &v.CooldownUntil, &v.Invalid); err != nil {
+			_ = rows.Close()
+			return out, err
+		}
+		out.States = append(out.States, v)
+	}
+	err = rows.Err()
+	_ = rows.Close()
+	if err != nil {
+		return out, err
+	}
+	if len(out.States) != len(ids) {
+		return out, ErrUnavailable
+	}
+	if err = tx.QueryRowContext(ctx, "SELECT clock_timestamp()").Scan(&out.ServerTime); err != nil {
+		return out, err
+	}
+	for i := range out.States {
+		out.States[i].ServerTime = out.ServerTime
+		out.States[i].ValidUntil = out.ServerTime.Add(15 * time.Second)
+	}
+	return out, tx.Commit()
+}
+
+type StateRemote interface {
+	ReportState(context.Context, Event) error
+	GetStates(context.Context, []int64) (StateBatch, error)
+}
+
+func (s *States) FlushReports(ctx context.Context, remote StateRemote) error {
 	rows, err := s.DB.QueryContext(ctx, "SELECT payload FROM regional_account_state_events WHERE region_id=$1 AND NOT acknowledged ORDER BY created_at,event_id LIMIT 100", s.Region)
 	if err != nil {
 		return err
@@ -174,33 +229,79 @@ func (s *States) Sync(ctx context.Context, remote StateRemote, ids []int64) erro
 		if err = remote.ReportState(ctx, e); err != nil {
 			return err
 		}
-		if _, err = s.DB.ExecContext(ctx, "UPDATE regional_account_state_events SET acknowledged=true WHERE event_id=$1", e.ID); err != nil {
-			return err
-		}
 	}
+	// Acknowledgement waits until a fresh batch is installed. Retrying the same
+	// report is idempotent and cannot unblock a stale pre-report snapshot.
+	return nil
+}
+
+// Sync performs one bounded round trip for the complete account assignment.
+// Reports use an independent worker; a slow report cannot starve clock proofs.
+func (s *States) Sync(ctx context.Context, remote StateRemote, ids []int64) error {
+	if len(ids) == 0 || len(ids) > 100 {
+		return ErrConflict
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	var before time.Time
+	if err := s.DB.QueryRowContext(ctx, "SELECT clock_timestamp()").Scan(&before); err != nil {
+		return err
+	}
+	batch, err := remote.GetStates(ctx, ids)
+	if err != nil {
+		return err
+	}
+	var after time.Time
+	if err = s.DB.QueryRowContext(ctx, "SELECT clock_timestamp()").Scan(&after); err != nil {
+		return err
+	}
+	if batch.ServerTime.IsZero() || after.Before(before) || after.Sub(before) > time.Second || batch.ServerTime.Before(before.Add(-time.Second)) || batch.ServerTime.After(after.Add(time.Second)) {
+		return ErrUnavailable
+	}
+	expected := map[int64]bool{}
 	for _, id := range ids {
-		var before time.Time
-		if err = s.DB.QueryRowContext(ctx, "SELECT clock_timestamp()").Scan(&before); err != nil {
-			return err
+		if id <= 0 || expected[id] {
+			return ErrConflict
 		}
-		v, err := remote.GetState(ctx, id)
+		expected[id] = true
+	}
+	if len(batch.States) != len(expected) {
+		return ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, v := range batch.States {
+		if !expected[v.AccountID] || v.Revision <= 0 || v.CooldownUntil.IsZero() || !v.ServerTime.Equal(batch.ServerTime) || !v.ValidUntil.Equal(batch.ServerTime.Add(15*time.Second)) {
+			return ErrConflict
+		}
+		delete(expected, v.AccountID)
+		result, err := tx.ExecContext(ctx, "INSERT INTO regional_local_account_states(account_id,revision,cooldown_until,invalid,valid_until,clock_valid_until) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(account_id) DO UPDATE SET revision=EXCLUDED.revision,cooldown_until=EXCLUDED.cooldown_until,invalid=EXCLUDED.invalid,valid_until=EXCLUDED.valid_until,clock_valid_until=EXCLUDED.clock_valid_until WHERE regional_local_account_states.revision<EXCLUDED.revision OR (regional_local_account_states.revision=EXCLUDED.revision AND regional_local_account_states.cooldown_until=EXCLUDED.cooldown_until AND regional_local_account_states.invalid=EXCLUDED.invalid AND regional_local_account_states.valid_until<=EXCLUDED.valid_until)", v.AccountID, v.Revision, v.CooldownUntil, v.Invalid, v.ValidUntil, before.Add(5*time.Second))
 		if err != nil {
 			return err
 		}
-		var after time.Time
-		if err = s.DB.QueryRowContext(ctx, "SELECT clock_timestamp()").Scan(&after); err != nil {
+		n, err := result.RowsAffected()
+		if err != nil {
 			return err
 		}
-		if v.ServerTime.IsZero() || after.Before(before) || after.Sub(before) > time.Second || v.ServerTime.Before(before.Add(-time.Second)) || v.ServerTime.After(after.Add(time.Second)) {
-			return ErrUnavailable
+		if n != 1 {
+			return ErrConflict
 		}
-		if err = s.Install(ctx, v); err != nil {
+		// Only a snapshot visibly containing the restriction acknowledges its
+		// report. Reports newer than this snapshot remain locally fail-closed.
+		if _, err = tx.ExecContext(ctx, "UPDATE regional_account_state_events SET acknowledged=true WHERE region_id=$1 AND account_id=$2 AND NOT acknowledged AND (payload->>'CooldownUntil')::timestamptz<=$3 AND (NOT (payload->>'Invalid')::boolean OR $4)", s.Region, v.AccountID, v.CooldownUntil, v.Invalid); err != nil {
 			return err
 		}
-		if _, err = s.DB.ExecContext(ctx, "UPDATE regional_local_account_states SET clock_valid_until=$2 WHERE account_id=$1", id, after.Add(5*time.Second)); err != nil {
-			return err
-		}
-
 	}
-	return nil
+	// Do not commit stale proofs after database installation consumed the budget.
+	var finished time.Time
+	if err = tx.QueryRowContext(ctx, "SELECT clock_timestamp()").Scan(&finished); err != nil {
+		return err
+	}
+	if finished.Before(after) || finished.Sub(before) > time.Second {
+		return ErrUnavailable
+	}
+	return tx.Commit()
 }

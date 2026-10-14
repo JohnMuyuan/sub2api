@@ -52,6 +52,25 @@ func (h *AccountHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = h.States.Apply(r.Context(), e)
+	case Prefix + "/accounts/states":
+		var req struct{ AccountIDs []int64 }
+		if decode(w, r, &req) != nil || len(req.AccountIDs) == 0 || len(req.AccountIDs) > 100 {
+			w.WriteHeader(400)
+			return
+		}
+		for _, id := range req.AccountIDs {
+			if !contains(h.Scope.AccountIDs, id) {
+				w.WriteHeader(403)
+				return
+			}
+		}
+		var batch accountstate.StateBatch
+		batch, err = h.States.SnapshotBatch(r.Context(), req.AccountIDs)
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(batch)
+			return
+		}
 	case Prefix + "/accounts/state":
 		var req struct{ AccountID int64 }
 		if decode(w, r, &req) != nil {
@@ -116,4 +135,42 @@ func (c *Client) GetState(ctx context.Context, id int64) (accountstate.State, er
 	}
 	err = json.Unmarshal(raw, &out)
 	return out, err
+}
+
+func (c *Client) GetStates(ctx context.Context, ids []int64) (accountstate.StateBatch, error) {
+	var out accountstate.StateBatch
+	if len(ids) == 0 || len(ids) > 100 {
+		return out, accountstate.ErrConflict
+	}
+	raw, err := json.Marshal(struct{ AccountIDs []int64 }{ids})
+	if err != nil {
+		return out, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+Prefix+"/accounts/states", bytes.NewReader(raw))
+	if err != nil {
+		return out, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.client.Do(req)
+	if err != nil {
+		return out, errors.New("regional batch state unavailable")
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != 200 {
+		return out, accountstate.ErrUnavailable
+	}
+	raw, err = io.ReadAll(io.LimitReader(res.Body, maxBody+1))
+	if err != nil || len(raw) > maxBody {
+		return out, accountstate.ErrUnavailable
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err = decoder.Decode(&out); err != nil {
+		return out, err
+	}
+	var extra any
+	if decoder.Decode(&extra) != io.EOF {
+		return out, accountstate.ErrConflict
+	}
+	return out, nil
 }

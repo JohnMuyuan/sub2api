@@ -91,7 +91,7 @@ func (p *RPMPrimary) Issue(ctx context.Context, g RPMGrant) error {
 	if err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, "UPDATE regional_rpm_budgets SET granted=granted+$3 WHERE account_id=$1 AND minute=$2 AND primary_used+granted<=$4::integer-$3::integer", g.AccountID, g.Minute, g.Units, limit)
+	result, err := tx.ExecContext(ctx, "UPDATE regional_rpm_budgets SET granted=granted+$3 WHERE account_id=$1 AND minute=$2 AND primary_used+granted<=$4::integer-$3::integer AND minute=floor(extract(epoch FROM clock_timestamp())/60)::bigint", g.AccountID, g.Minute, g.Units, limit)
 	if err != nil {
 		return err
 	}
@@ -124,6 +124,14 @@ func (p *RPMPrimary) Acquire(ctx context.Context, id int64) (bool, int, time.Tim
 	if err = rpmLock(ctx, tx, id, minute); err != nil {
 		return false, 0, reset, err
 	}
+	currentMinute, err := rpmMinute(ctx, tx)
+	if err != nil {
+		return false, 0, reset, err
+	}
+	if currentMinute != minute {
+		return false, 0, reset, ErrUnavailable
+	}
+
 	limit, err := p.Limit(ctx, tx, id)
 	if err != nil {
 		return false, 0, reset, err
@@ -135,8 +143,16 @@ func (p *RPMPrimary) Acquire(ctx context.Context, id int64) (bool, int, time.Tim
 	if limit <= 0 || count >= limit {
 		return false, count, reset, nil
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE regional_rpm_budgets SET primary_used=primary_used+1 WHERE account_id=$1 AND minute=$2", id, minute); err != nil {
+	result, err := tx.ExecContext(ctx, "UPDATE regional_rpm_budgets SET primary_used=primary_used+1 WHERE account_id=$1 AND minute=$2 AND minute=floor(extract(epoch FROM clock_timestamp())/60)::bigint", id, minute)
+	if err != nil {
 		return false, count, reset, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, count, reset, err
+	}
+	if n != 1 {
+		return false, count, reset, ErrUnavailable
 	}
 	return true, count + 1, reset, tx.Commit()
 }
@@ -180,6 +196,14 @@ func (l *RPMLocal) Acquire(ctx context.Context, id int64) (bool, int, time.Time,
 	if err = rpmLock(ctx, tx, id, minute); err != nil {
 		return false, 0, reset, err
 	}
+	currentMinute, err := rpmMinute(ctx, tx)
+	if err != nil {
+		return false, 0, reset, err
+	}
+	if currentMinute != minute {
+		return false, 0, reset, ErrUnavailable
+	}
+
 	var clockOK bool
 	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM regional_local_account_states WHERE account_id=$1 AND clock_valid_until>clock_timestamp() AND extract(second FROM clock_timestamp())>=2 AND extract(second FROM clock_timestamp())<58)", id).Scan(&clockOK); err != nil {
 		return false, 0, reset, err
@@ -199,8 +223,16 @@ func (l *RPMLocal) Acquire(ctx context.Context, id int64) (bool, int, time.Time,
 	if err != nil {
 		return false, used, reset, err
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE regional_local_rpm_grants SET used=used+1 WHERE grant_id=$1", grant); err != nil {
+	result, err := tx.ExecContext(ctx, "UPDATE regional_local_rpm_grants SET used=used+1 WHERE grant_id=$1 AND used<units AND minute=floor(extract(epoch FROM clock_timestamp())/60)::bigint AND EXISTS(SELECT 1 FROM regional_local_account_states WHERE account_id=$2 AND clock_valid_until>clock_timestamp() AND extract(second FROM clock_timestamp())>=2 AND extract(second FROM clock_timestamp())<58)", grant, id)
+	if err != nil {
 		return false, used, reset, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, used, reset, err
+	}
+	if n != 1 {
+		return false, used, reset, ErrUnavailable
 	}
 	return true, used + 1, reset, tx.Commit()
 }
