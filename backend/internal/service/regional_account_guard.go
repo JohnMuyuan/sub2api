@@ -63,3 +63,35 @@ func (s *GatewayService) regionalHandleUpstreamError(ctx context.Context, accoun
 	}
 	return s.rateLimitService.HandleUpstreamError(ctx, account, status, headers, body, model...)
 }
+
+// accountForRegionalRequest preserves the primary path and makes an installed
+// regional snapshot the sole authority for all final account/parent reads.
+func (s *OpenAIGatewayService) accountForRegionalRequest(ctx context.Context, id int64) (*Account, error) {
+	if s.schedulerSnapshot != nil && s.schedulerSnapshot.localSnapshotReader != nil {
+		return s.schedulerSnapshot.GetAccount(ctx, id)
+	}
+	if s.accountRepo == nil {
+		return nil, ErrLocalSchedulerSnapshotUnavailable
+	}
+	return s.accountRepo.GetByID(ctx, id)
+}
+func (s *OpenAIGatewayService) regionalCredentialAccount(ctx context.Context, account *Account) (*Account, error) {
+	if s.schedulerSnapshot == nil || s.schedulerSnapshot.localSnapshotReader == nil {
+		return resolveCredentialAccount(ctx, s.accountRepo, account)
+	}
+	if account == nil {
+		return nil, ErrLocalSchedulerSnapshotUnavailable
+	}
+	fresh, err := s.schedulerSnapshot.GetAccount(ctx, account.ID)
+	if err != nil || fresh == nil {
+		return nil, ErrLocalSchedulerSnapshotUnavailable
+	}
+	if !fresh.IsShadow() {
+		return fresh, nil
+	}
+	parent, err := s.schedulerSnapshot.GetAccount(ctx, *fresh.ParentAccountID)
+	if err != nil || parent == nil || parent.IsShadow() || !parent.IsOpenAIOAuth() {
+		return nil, ErrLocalSchedulerSnapshotUnavailable
+	}
+	return parent, nil
+}
