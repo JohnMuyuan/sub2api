@@ -1991,7 +1991,7 @@ func (s *defaultOpenAIAccountScheduler) lookupShadowParentAccount(ctx context.Co
 	if s.service.accountRepo == nil {
 		return nil
 	}
-	account, _ := s.service.accountRepo.GetByID(ctx, id)
+	account, _ := s.service.accountForRegionalRequest(ctx, id)
 	return account
 }
 
