@@ -136,3 +136,56 @@ func TestRegionalMeterOAuthReservesFullOutputWindow(t *testing.T) {
 	a.fullOutputWindow = false
 	require.Error(t, regionalMeterValidatePayload(ctx, []byte("{\"model\":\"mock-text\"}")))
 }
+
+func TestRegionalMeterRejectsNestedTools(t *testing.T) {
+	for _, body := range []string{
+		"{\"model\":\"mock-text\",\"max_tokens\":10,\"messages\":[{\"role\":\"assistant\",\"content\":\"ok\",\"tool_calls\":[{}]}]}",
+		"{\"model\":\"mock-text\",\"max_tokens\":10,\"messages\":[{\"role\":\"assistant\",\"content\":\"ok\",\"function_call\":{}}]}",
+	} {
+		_, _, err := regionalTextOutputBound([]byte(body))
+		require.Error(t, err)
+	}
+}
+
+func TestRegionalMeterActualRawChatHTTPAndSSE(t *testing.T) {
+	for _, tc := range []struct {
+		name, response   string
+		stream, complete bool
+	}{
+		{"json", "{\"id\":\"chat-mock\",\"model\":\"mock-text\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2}}", false, true},
+		{"sse", "data: {\"id\":\"chat-mock\",\"model\":\"mock-text\",\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2}}\n\ndata: [DONE]\n\n", true, true},
+		{"partial sse", "data: {\"id\":\"chat-mock\",\"model\":\"mock-text\",\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2}}\n\n", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stream := "false"
+			if tc.stream {
+				stream = "true"
+			}
+			body := []byte("{\"model\":\"mock-text\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":10,\"stream\":" + stream + "}")
+			response := newOpenAIRejectedFieldTestResponse(http.StatusOK, tc.response)
+			if tc.stream {
+				response.Header.Set("Content-Type", "text/event-stream")
+			}
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{response}}
+			s := newOpenAIRejectedFieldTestService(upstream)
+			l := &meterTestLedger{}
+			s.regionalMetering = testRegionalMeter(l)
+			c := newOpenAIRejectedFieldTestContext(body)
+			c.Set("api_key", &APIKey{ID: 4, UserID: 5})
+			account := newOpenAIRejectedFieldTestAccount()
+			account.Extra["openai_responses_supported"] = false
+			result, err := s.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+			if tc.complete {
+				require.NoError(t, err)
+				require.True(t, result.RegionalMetered)
+				require.Equal(t, 1, l.completed)
+			} else {
+				require.Error(t, err)
+				require.Zero(t, l.completed)
+			}
+			require.Equal(t, 1, l.starts)
+			require.Zero(t, l.canceled)
+			require.Len(t, upstream.bodies, 1)
+		})
+	}
+}

@@ -338,13 +338,7 @@ func (c *regionalConcurrencyCache) prepareControl() error {
 		handler = mux
 		c.controlListener = listener
 		slotsHandler := handler
-		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if h := c.fundsHandler.Load(); h != nil {
-				(*h).ServeHTTP(w, r)
-				return
-			}
-			slotsHandler.ServeHTTP(w, r)
-		})
+		handler = c.withFundsControl(slotsHandler)
 		c.controlServer = &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{cert}, ClientCAs: roots, ClientAuth: tls.RequireAndVerifyClientCert}}
 	} else {
 		if cfg.Endpoint == "" || cfg.Listen != "" || len(cfg.Targets) == 0 || cfg.LifetimeSeconds < 30 || cfg.LifetimeSeconds > 3600 {

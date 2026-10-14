@@ -88,6 +88,9 @@ func ProvideRegionalMetering(db *sql.DB, cfg *config.Config, cache service.Concu
 	if cfg == nil || cfg.Runtime.RegionalFundsFile == "" {
 		return nil, nil
 	}
+	if cfg.BatchImage.QueueEnabled {
+		return nil, errors.New("batch image queue must be drained and disabled before coordinated funds")
+	}
 	c, err := readRegionalFundsConfig(cfg.Runtime.RegionalFundsFile)
 	if err != nil {
 		return nil, err
@@ -167,7 +170,11 @@ func ProvideRegionalMetering(db *sql.DB, cfg *config.Config, cache service.Concu
 		if !allowed {
 			return r, price, ledger.ErrConflict
 		}
-		r = ledger.Reservation{RequestID: uuid.NewString(), RegionID: c.Region, UserID: key.UserID, APIKeyID: key.ID, AccountID: account.ID, AdmittedAt: time.Now().UTC().Truncate(time.Microsecond)}
+		var admitted time.Time
+		if err := db.QueryRowContext(ctx, "SELECT clock_timestamp()").Scan(&admitted); err != nil {
+			return r, price, err
+		}
+		r = ledger.Reservation{RequestID: uuid.NewString(), RegionID: c.Region, UserID: key.UserID, APIKeyID: key.ID, AccountID: account.ID, AdmittedAt: admitted.UTC().Truncate(time.Microsecond)}
 		if c.Mode == "regional" {
 			var raw []byte
 			err := db.QueryRowContext(ctx, `SELECT lease FROM regional_local_leases WHERE region_id=$1 AND user_id=$2 AND state='open' AND (lease->>'api_key_id')::bigint=$3 AND (lease->>'account_id')::bigint=$4 AND (lease->>'expires_at')::timestamptz>clock_timestamp() AND granted-spent-reserved>0 ORDER BY lease_id LIMIT 1`, c.Region, key.UserID, key.ID, account.ID).Scan(&raw)
@@ -196,6 +203,15 @@ func ProvideRegionalMetering(db *sql.DB, cfg *config.Config, cache service.Concu
 		}
 		if stoppedFlag.Load() {
 			return errors.New("funds runtime stopped")
+		}
+		if c.Mode == "primary" {
+			var unattributed bool
+			if err := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM regional_budget_allocations WHERE state='held' AND group_id IS NULL)").Scan(&unattributed); err != nil {
+				return err
+			}
+			if unattributed {
+				return errors.New("legacy held allocation requires billing attribution drain")
+			}
 		}
 		if capacity.runtimeFailed.Load() {
 			return errors.New("capacity runtime failed")
@@ -243,7 +259,7 @@ func ProvideRegionalMetering(db *sql.DB, cfg *config.Config, cache service.Concu
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
-			cycle, cancel := context.WithTimeout(ctx, 20*time.Second)
+			cycle, cancel := context.WithTimeout(ctx, 5*time.Second)
 			var cycleErr error
 			if c.Mode == "primary" {
 				_, cycleErr = db.ExecContext(cycle, "INSERT INTO regional_funds_members(epoch,instance_id) VALUES($1,$2) ON CONFLICT(epoch,instance_id) DO UPDATE SET heartbeat_at=clock_timestamp()", capacity.runtimeConfig.Epoch, capacity.runtimeConfig.Instance)
