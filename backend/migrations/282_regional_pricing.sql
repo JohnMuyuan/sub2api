@@ -43,3 +43,6 @@ CREATE TABLE regional_budget_allocations (
 CREATE INDEX regional_budget_key ON regional_budget_allocations(api_key_id) WHERE state='held';
 CREATE INDEX regional_budget_account ON regional_budget_allocations(account_id) WHERE state='held';
 CREATE INDEX regional_budget_user ON regional_budget_allocations(user_id,platform) WHERE state='held';
+
+CREATE TABLE regional_funds_imports(epoch TEXT PRIMARY KEY, imported_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp());
+CREATE TABLE regional_funds_members(epoch TEXT NOT NULL,instance_id TEXT NOT NULL,heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(epoch,instance_id));

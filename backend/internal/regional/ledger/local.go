@@ -12,6 +12,7 @@ import (
 )
 
 var (
+	ErrExpiredUnissued   = errors.New("quota lease expired and never issued")
 	ErrConflict          = errors.New("regional ledger immutable identity conflict")
 	ErrExhausted         = errors.New("regional lease unavailable or exhausted")
 	ErrAlreadyDispatched = errors.New("regional request already dispatched")

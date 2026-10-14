@@ -16,6 +16,7 @@ import (
 // regionalConcurrencyCache keeps admission, FIFO, and Live ownership in SQL.
 // Redis supplies auxiliary waiting statistics and idle ingress leases only.
 type regionalConcurrencyCache struct {
+	fundsHandler    atomic.Pointer[http.Handler]
 	runtimeConfig   *RegionalConcurrencyRuntimeConfig
 	runtimeFailed   atomic.Bool
 	controlServer   *http.Server

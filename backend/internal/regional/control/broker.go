@@ -46,6 +46,12 @@ func (b *Broker) Queue(ctx context.Context, id, op string, payload any) error {
 			return err
 		}
 		raw, err = json.Marshal(g)
+	case "quota/close":
+		r, ok := payload.(ledger.DrainReceipt)
+		if !ok || r.LeaseID == "" || r.Region == "" {
+			return errors.New("broker requires drain receipt")
+		}
+		raw, err = json.Marshal(r)
 	case "quota/issue":
 		q, ok := payload.(regional.Lease)
 		if !ok {
@@ -126,10 +132,29 @@ func (b *Broker) Replay(ctx context.Context, id string) error {
 		if err = json.Unmarshal(raw, &q); err != nil {
 			return err
 		}
-		if err = b.Remote.IssueQuota(ctx, q); err != nil {
+		if err = b.Remote.IssueQuota(ctx, q); errors.Is(err, slots.ErrExpiredUnissued) {
+			if _, err = tx.ExecContext(ctx, "UPDATE regional_broker_operations SET state='rejected' WHERE operation_id=$1", id); err != nil {
+				return err
+			}
+			return tx.Commit()
+		} else if err != nil {
 			return err
 		}
 		if err = b.Quota.Install(ctx, q); err != nil {
+			return err
+		}
+	case "quota/close":
+		remote, ok := b.Remote.(interface {
+			CloseQuota(context.Context, ledger.DrainReceipt) error
+		})
+		if !ok {
+			return errors.New("quota closure unavailable")
+		}
+		var receipt ledger.DrainReceipt
+		if err = json.Unmarshal(raw, &receipt); err != nil {
+			return err
+		}
+		if err = remote.CloseQuota(ctx, receipt); err != nil {
 			return err
 		}
 	default:
@@ -141,7 +166,7 @@ func (b *Broker) Replay(ctx context.Context, id string) error {
 	return tx.Commit()
 }
 func (b *Broker) RunOnce(ctx context.Context) error {
-	rows, err := b.DB.QueryContext(ctx, "SELECT operation_id FROM regional_broker_operations WHERE state='pending' ORDER BY created_at,operation_id LIMIT 100")
+	rows, err := b.DB.QueryContext(ctx, "SELECT operation_id FROM regional_broker_operations WHERE state='pending' AND (($1 AND operation IN ('quota/issue','quota/close')) OR ($2 AND operation IN ('slots/issue','slots/renew'))) ORDER BY created_at,operation_id LIMIT 100", b.Quota != nil, b.Slots != nil)
 	if err != nil {
 		return err
 	}

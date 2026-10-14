@@ -67,7 +67,10 @@ func (p *Primary) Issue(ctx context.Context, l regional.Lease) error {
 	if err := tx.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
 		return err
 	}
-	if now.Before(l.IssuedAt) || !now.Before(l.ExpiresAt) || now.Sub(l.IssuedAt) > 5*time.Second {
+	if !now.Before(l.ExpiresAt) {
+		return ErrExpiredUnissued
+	}
+	if now.Before(l.IssuedAt) || now.Sub(l.IssuedAt) > 5*time.Second {
 		return ErrExhausted
 	}
 	funded := true
