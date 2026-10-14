@@ -1,11 +1,9 @@
 package service
 
 import (
-	"context"
 	"errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"net/http"
-	"time"
 )
 
 func (s *GatewayService) regionalDoWithTLS(req *http.Request, proxy string, account *Account, profile *tlsfingerprint.Profile) (*http.Response, error) {
@@ -28,15 +26,5 @@ func (s *GatewayService) regionalDoWithTLS(req *http.Request, proxy string, acco
 		}
 	}
 	response, err := s.httpUpstream.DoWithTLS(req, proxy, account.ID, account.Concurrency, profile)
-	if response != nil {
-		if guard, ok := s.rpmCache.(RegionalAccountGuard); ok {
-			ctx, cancel := context.WithTimeout(context.WithoutCancel(req.Context()), 3*time.Second)
-			defer cancel()
-			if reportErr := guard.RegionalAccountReport(ctx, account.ID, response.StatusCode); reportErr != nil {
-				_ = response.Body.Close()
-				return nil, reportErr
-			}
-		}
-	}
 	return response, err
 }

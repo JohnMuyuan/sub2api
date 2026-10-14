@@ -94,12 +94,11 @@ func isOpenAIAccount(account *Account) bool {
 // for scheduling after applying account mapping exactly once.
 func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, canonicalModel ...string) bool {
 	if s != nil && account != nil {
-		if guard, ok := s.rpmCache.(RegionalAccountGuard); ok {
+		if guard, ok := s.rpmCache.(RegionalAccountReporter); ok && guard.RegionalAccountReportingLocal() {
 			reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 			defer cancel()
-			if err := guard.RegionalAccountReport(reportCtx, account.ID, statusCode); err != nil {
-				return true
-			}
+			restricted, err := reportRegionalAccountError(reportCtx, guard, account, statusCode, headers, responseBody)
+			return restricted || err != nil
 		}
 	}
 

@@ -166,3 +166,11 @@ func (c *regionalAccountCoordinator) RegionalRPMReservationValid(ctx context.Con
 	err := c.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM regional_local_account_states WHERE account_id=$1 AND NOT invalid AND cooldown_until<=clock_timestamp() AND valid_until>clock_timestamp() AND clock_valid_until>clock_timestamp() AND extract(second FROM clock_timestamp())>=2 AND extract(second FROM clock_timestamp())<58 AND to_timestamp((floor(extract(epoch FROM clock_timestamp())/60)::bigint+1)*60)=$2)", id, reset).Scan(&valid)
 	return valid, err
 }
+
+func (c *regionalAccountCoordinator) RegionalAccountReportingLocal() bool { return c.local != nil }
+func (c *regionalAccountCoordinator) RegionalAccountRestriction(ctx context.Context, id int64, until time.Time, invalid bool) error {
+	if c.local == nil {
+		return nil
+	}
+	return c.states.Report(ctx, accountstate.Event{ID: fmt.Sprintf("state-%s-%d", c.region, time.Now().UnixNano()), Region: c.region, AccountID: id, CooldownUntil: until.UTC(), Invalid: invalid})
+}
