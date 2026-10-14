@@ -213,10 +213,18 @@ func regionalTextOutputBound(body []byte) (string, int64, error) {
 	if model == "" || output <= 0 {
 		return "", 0, errors.New("explicit model and output limit required")
 	}
-	if raw, ok := fields["input"]; ok {
-		var text string
-		if err := json.Unmarshal(raw, &text); err != nil {
-			return "", 0, errors.New("only text input is bounded")
+	for _, field := range []string{"input", "instructions"} {
+		if raw, ok := fields[field]; ok {
+			var text string
+			if err := json.Unmarshal(raw, &text); err != nil {
+				return "", 0, errors.New("only text input and instructions are bounded")
+			}
+		}
+	}
+	if raw, ok := fields["type"]; ok {
+		var kind string
+		if err := json.Unmarshal(raw, &kind); err != nil || kind != "response.create" {
+			return "", 0, errors.New("only response.create has a regional cost bound")
 		}
 	}
 	if raw, ok := fields["messages"]; ok {
@@ -328,7 +336,11 @@ func (s *OpenAIGatewayService) beginRegionalMeter(ctx context.Context, c *gin.Co
 		if err != nil {
 			return err
 		}
-		event := ledger.Event{Usage: regional.UsageEvent{SchemaVersion: regional.SchemaVersion, EventID: r.RequestID, LeaseID: r.LeaseID, RegionID: r.RegionID, UserID: r.UserID, APIKeyID: r.APIKeyID, AccountID: r.AccountID, AdmittedAt: r.AdmittedAt, CompletedAt: time.Now().UTC(), Charge: charge}, Model: r.Model, PricingVersion: r.PricingVersion, PayloadSHA256: r.PayloadSHA256, InputTokens: input, OutputTokens: int64(u.OutputTokens), CacheCreationTokens: int64(u.CacheCreationInputTokens), CacheReadTokens: int64(u.CacheReadInputTokens)}
+		completed := time.Now().UTC()
+		if completed.Before(r.AdmittedAt) {
+			completed = r.AdmittedAt
+		}
+		event := ledger.Event{Usage: regional.UsageEvent{SchemaVersion: regional.SchemaVersion, EventID: r.RequestID, LeaseID: r.LeaseID, RegionID: r.RegionID, UserID: r.UserID, APIKeyID: r.APIKeyID, AccountID: r.AccountID, AdmittedAt: r.AdmittedAt, CompletedAt: completed, Charge: charge}, Model: r.Model, PricingVersion: r.PricingVersion, PayloadSHA256: r.PayloadSHA256, InputTokens: input, OutputTokens: int64(u.OutputTokens), CacheCreationTokens: int64(u.CacheCreationInputTokens), CacheReadTokens: int64(u.CacheReadInputTokens)}
 		settle, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		return m.Ledger.Complete(settle, event)

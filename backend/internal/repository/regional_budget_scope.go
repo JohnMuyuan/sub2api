@@ -6,15 +6,16 @@ import (
 	"errors"
 	"github.com/Wei-Shaw/sub2api/internal/regional"
 	"github.com/Wei-Shaw/sub2api/internal/regional/ledger"
+	"time"
 )
 
 // RegionalBudgetScope serializes against authoritative monetary rows. Existing
-// counters are deliberately not reset here: an expired window can deny early,
-// but never frees an unresolved reservation. Budget cutover must stop legacy
+// counters reset under the same locks while unresolved allocations remain
+// occupied across windows. Budget cutover must stop legacy
 // asynchronous writers before this scope is installed.
 type RegionalBudgetScope struct{}
 
-func (s RegionalBudgetScope) Reserve(ctx context.Context, tx *sql.Tx, id string, user, key, account int64, maximum regional.Amount) error {
+func (s RegionalBudgetScope) Reserve(ctx context.Context, tx *sql.Tx, id string, user, key, account int64, maximum regional.Amount, admitted time.Time) error {
 	amount, err := ledger.USD(maximum)
 	if err != nil {
 		return err
@@ -31,6 +32,16 @@ func (s RegionalBudgetScope) Reserve(ctx context.Context, tx *sql.Tx, id string,
 		return nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	var unattributed bool
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM regional_budget_allocations WHERE state='held' AND group_id IS NULL)").Scan(&unattributed); err != nil {
+		return err
+	}
+	if unattributed {
+		return errors.New("legacy held allocation requires billing attribution drain")
+	}
+	if err = regionalKeyWindows(ctx, tx, key, admitted); err != nil {
 		return err
 	}
 	var group int64
@@ -63,6 +74,9 @@ func (s RegionalBudgetScope) Reserve(ctx context.Context, tx *sql.Tx, id string,
 	if !accountUnitRates {
 		return errors.New("account multiplier requires an immutable scoped price contract")
 	}
+	if err = regionalAccountWindows(ctx, tx, account, admitted); err != nil {
+		return err
+	}
 	if group <= 0 {
 		return errors.New("funded request requires concrete group")
 	}
@@ -86,6 +100,9 @@ func (s RegionalBudgetScope) Reserve(ctx context.Context, tx *sql.Tx, id string,
 		if err = tx.QueryRowContext(ctx, "SELECT id FROM user_subscriptions WHERE user_id=$1 AND group_id=$2 AND status='active' AND deleted_at IS NULL AND starts_at<=clock_timestamp() AND expires_at>clock_timestamp() FOR UPDATE", user, group).Scan(&subscription); err != nil {
 			return err
 		}
+		if err = regionalSubscriptionWindows(ctx, tx, subscription, admitted); err != nil {
+			return err
+		}
 		for _, window := range []string{"daily", "weekly", "monthly"} {
 			query := "SELECT g." + window + "_limit_usd IS NULL OR g." + window + "_limit_usd<=0 OR us." + window + "_usage_usd+$2::numeric+COALESCE((SELECT SUM(maximum-spent)::numeric/1000000000 FROM regional_budget_allocations WHERE subscription_id=$1 AND state='held'),0)<=g." + window + "_limit_usd FROM user_subscriptions us JOIN groups g ON g.id=us.group_id WHERE us.id=$1"
 			if err = tx.QueryRowContext(ctx, query, subscription, amount).Scan(&enough); err != nil {
@@ -107,6 +124,9 @@ func (s RegionalBudgetScope) Reserve(ctx context.Context, tx *sql.Tx, id string,
 			}
 		}
 	}
+	if err = regionalPlatformWindows(ctx, tx, user, platform, admitted); err != nil {
+		return err
+	}
 	var quotaID int64
 	err = tx.QueryRowContext(ctx, "SELECT id FROM user_platform_quotas WHERE user_id=$1 AND platform=$2 AND deleted_at IS NULL FOR UPDATE", user, platform).Scan(&quotaID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -123,7 +143,7 @@ func (s RegionalBudgetScope) Reserve(ctx context.Context, tx *sql.Tx, id string,
 			}
 		}
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO regional_budget_allocations(allocation_id,user_id,api_key_id,account_id,subscription_id,platform,maximum) VALUES($1,$2,$3,$4,$5,$6,$7)", id, user, key, account, subscription, platform, int64(maximum))
+	_, err = tx.ExecContext(ctx, "INSERT INTO regional_budget_allocations(allocation_id,user_id,api_key_id,account_id,subscription_id,platform,maximum,group_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", id, user, key, account, subscription, platform, int64(maximum), group)
 	return err
 }
 
@@ -136,22 +156,35 @@ func (s RegionalBudgetScope) Charge(ctx context.Context, tx *sql.Tx, id string, 
 	if state != "held" || e.Usage.UserID != user || e.Usage.APIKeyID != key || e.Usage.AccountID != account || e.Usage.Charge > regional.Amount(maximum-spent) {
 		return ledger.ErrConflict
 	}
+	admitted := e.Usage.AdmittedAt
+	if err := regionalKeyWindows(ctx, tx, key, admitted); err != nil {
+		return err
+	}
+	if err := regionalAccountWindows(ctx, tx, account, admitted); err != nil {
+		return err
+	}
+	if err := regionalSubscriptionWindows(ctx, tx, subscription, admitted); err != nil {
+		return err
+	}
+	if err := regionalPlatformWindows(ctx, tx, user, platform, admitted); err != nil {
+		return err
+	}
 	amount, err := ledger.USD(e.Usage.Charge)
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE api_keys SET quota_used=quota_used+$2::numeric,usage_5h=usage_5h+$2::numeric,usage_1d=usage_1d+$2::numeric,usage_7d=usage_7d+$2::numeric,updated_at=NOW() WHERE id=$1", key, amount); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE api_keys SET quota_used=quota_used+$2::numeric,usage_5h=usage_5h+CASE WHEN window_5h_start<=$3 THEN $2::numeric ELSE 0 END,usage_1d=usage_1d+CASE WHEN window_1d_start<=$3 THEN $2::numeric ELSE 0 END,usage_7d=usage_7d+CASE WHEN window_7d_start<=$3 THEN $2::numeric ELSE 0 END,updated_at=NOW() WHERE id=$1", key, amount, admitted); err != nil {
 		return err
 	}
 	if subscription != 0 {
-		if _, err = tx.ExecContext(ctx, "UPDATE user_subscriptions SET daily_usage_usd=daily_usage_usd+$2::numeric,weekly_usage_usd=weekly_usage_usd+$2::numeric,monthly_usage_usd=monthly_usage_usd+$2::numeric,updated_at=NOW() WHERE id=$1", subscription, amount); err != nil {
+		if _, err = tx.ExecContext(ctx, "UPDATE user_subscriptions SET daily_usage_usd=daily_usage_usd+CASE WHEN daily_window_start<=$3 THEN $2::numeric ELSE 0 END,weekly_usage_usd=weekly_usage_usd+CASE WHEN weekly_window_start<=$3 THEN $2::numeric ELSE 0 END,monthly_usage_usd=monthly_usage_usd+CASE WHEN monthly_window_start<=$3 THEN $2::numeric ELSE 0 END,updated_at=NOW() WHERE id=$1", subscription, amount, admitted); err != nil {
 			return err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE accounts SET extra=COALESCE(extra,'{}'::jsonb)||jsonb_build_object('quota_used',COALESCE((extra->>'quota_used')::numeric,0)+$2::numeric,'quota_daily_used',COALESCE((extra->>'quota_daily_used')::numeric,0)+$2::numeric,'quota_weekly_used',COALESCE((extra->>'quota_weekly_used')::numeric,0)+$2::numeric),updated_at=NOW() WHERE id=$1 AND type IN ('apikey','bedrock')`, account, amount); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE accounts SET extra=COALESCE(extra,'{}'::jsonb)||jsonb_build_object('quota_used',COALESCE((extra->>'quota_used')::numeric,0)+$2::numeric,'quota_daily_used',COALESCE((extra->>'quota_daily_used')::numeric,0)+CASE WHEN (extra->>'quota_daily_start')::timestamptz<=$3 THEN $2::numeric ELSE 0 END,'quota_weekly_used',COALESCE((extra->>'quota_weekly_used')::numeric,0)+CASE WHEN (extra->>'quota_weekly_start')::timestamptz<=$3 THEN $2::numeric ELSE 0 END),updated_at=NOW() WHERE id=$1 AND type IN ('apikey','bedrock')`, account, amount, admitted); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE user_platform_quotas SET daily_usage_usd=daily_usage_usd+$3::numeric,weekly_usage_usd=weekly_usage_usd+$3::numeric,monthly_usage_usd=monthly_usage_usd+$3::numeric,updated_at=NOW() WHERE user_id=$1 AND platform=$2 AND deleted_at IS NULL", user, platform, amount); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE user_platform_quotas SET daily_usage_usd=daily_usage_usd+CASE WHEN daily_window_start<=$4 THEN $3::numeric ELSE 0 END,weekly_usage_usd=weekly_usage_usd+CASE WHEN weekly_window_start<=$4 THEN $3::numeric ELSE 0 END,monthly_usage_usd=monthly_usage_usd+CASE WHEN monthly_window_start<=$4 THEN $3::numeric ELSE 0 END,updated_at=NOW() WHERE user_id=$1 AND platform=$2 AND deleted_at IS NULL", user, platform, amount, admitted); err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, "UPDATE regional_budget_allocations SET spent=spent+$2 WHERE allocation_id=$1", id, int64(e.Usage.Charge))

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"encoding/json"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/regional/ledger"
 	"github.com/stretchr/testify/require"
 	"os"
@@ -30,4 +31,12 @@ func TestRegionalFundsConfigTargets(t *testing.T) {
 	write(base)
 	_, err = readRegionalFundsConfig(path)
 	require.ErrorContains(t, err, "billing mode")
+}
+
+func TestRegionalFundsRefusesUnboundedBatchWorker(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Runtime.RegionalFundsFile = "unread-funds-file"
+	cfg.BatchImage.QueueEnabled = true
+	_, err := ProvideRegionalMetering(nil, cfg, nil, nil)
+	require.ErrorContains(t, err, "batch image queue")
 }

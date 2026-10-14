@@ -120,6 +120,12 @@ func (p *PrimaryRequests) finish(ctx context.Context, id string, e *Event) error
 	if err = json.Unmarshal(raw, &r); err != nil {
 		return err
 	}
+	// Match admission's user -> key/account scope order. The refund below
+	// must not request this lock after holding quota rows.
+	var lockedUser int64
+	if err = tx.QueryRowContext(ctx, "SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE", r.UserID).Scan(&lockedUser); err != nil {
+		return err
+	}
 	refund := r.Maximum
 	next := "canceled"
 	var event any
