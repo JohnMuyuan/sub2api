@@ -134,6 +134,9 @@ def documents(spec, secrets):
             files[f'{instance}/concurrency.json'] = concurrency
             files[f'{instance}/funds.json'] = dict(Mode='primary' if primary else 'regional', Region=region['id'], Prices=copy.deepcopy(spec['prices']), Targets=[dict(billing_mode='' if t['billing_mode'] == 'balance' else 'subscription', user_id=t['user_id'], api_key_id=t['api_key_id'], account_id=t['account_id'], amount=t['amount_nano_usd']) for t in region['funds_targets']], MaximumOutbox=spec['maximum_outbox'])
             files[f'{instance}/runtime.json'] = dict(runtime=dict(role='full' if primary else 'gateway', regional_auth_file='/run/sub2api-regional/auth.json', regional_scheduler_file='/run/sub2api-regional/scheduler.json', regional_concurrency_file='/run/sub2api-regional/concurrency.json', regional_funds_file='/run/sub2api-regional/funds.json'))
+    for path, value in files.items():
+        limit = 1048576 if path.endswith(('/auth.json', '/scheduler.json')) else 65536
+        require(len((json.dumps(value, indent=2) + '\n').encode()) <= limit, 'rendered file exceeds runtime input limit')
     return files
 
 

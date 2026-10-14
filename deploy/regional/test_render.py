@@ -64,6 +64,7 @@ class RenderTests(unittest.TestCase):
             lambda s: s['prices'][0].update(input_nano_per_million=0.1),
             lambda s: s['prices'].append(copy.deepcopy(s['prices'][0])),
             lambda s: s['cutover']['workloads']['primary-a'].update(replicas=2),
+            lambda s: s['prices'][0].update(model='x' * 65536),
         ]
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / 'rendered'
