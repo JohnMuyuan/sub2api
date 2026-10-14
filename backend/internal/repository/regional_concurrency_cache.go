@@ -217,3 +217,28 @@ func (c *regionalConcurrencyCache) CleanupExpiredAccountSlots(context.Context, i
 	return nil
 }
 func (c *regionalConcurrencyCache) CleanupExpiredAccountSlotKeys(context.Context) error { return nil }
+
+// CheckRegionalSlots observes capacity; actual requests must still acquire it
+// transactionally. It never renews a grant or releases an in-flight holder.
+func (c *regionalConcurrencyCache) CheckRegionalSlots(ctx context.Context) error {
+	if c.runtimeConfig == nil || c.runtimeFailed.Load() {
+		return errors.New("regional slots runtime unavailable")
+	}
+	if c.local == nil {
+		return errors.New("regional local slots required")
+	}
+	if len(c.runtimeConfig.Targets) == 0 {
+		return errors.New("regional slots targets missing")
+	}
+	for _, target := range c.runtimeConfig.Targets {
+		var ready bool
+		err := c.database().QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM regional_local_slot_grants WHERE region_id=$1 AND kind=$2 AND resource_id=$3 AND state='open' AND used<slots AND (grant_payload->>'issued_at')::timestamptz<=clock_timestamp() AND (grant_payload->>'expires_at')::timestamptz>clock_timestamp())", c.local.Region, target.Resource.Kind, target.Resource.ID).Scan(&ready)
+		if err != nil {
+			return err
+		}
+		if !ready {
+			return slots.ErrUnavailable
+		}
+	}
+	return nil
+}
