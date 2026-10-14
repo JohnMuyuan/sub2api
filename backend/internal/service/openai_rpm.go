@@ -29,6 +29,14 @@ func WithOpenAIRPMReservation(ctx context.Context, account *Account, state Accou
 }
 
 func (s *OpenAIGatewayService) acquireOpenAIRPMForSend(ctx context.Context, account *Account) error {
+	if account != nil && s != nil {
+		if guard, ok := s.rpmCache.(RegionalAccountGuard); ok {
+			if err := guard.RegionalAccountAllowed(ctx, account.ID); err != nil {
+				return err
+			}
+		}
+	}
+
 	if account == nil || !account.IsOpenAIOAuth() || account.GetBaseRPM() <= 0 {
 		return nil
 	}

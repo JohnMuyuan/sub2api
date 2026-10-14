@@ -19,12 +19,13 @@ type ClaudeTokenCache = GeminiTokenCache
 
 // ClaudeTokenProvider manages access_token for Claude OAuth and Vertex service account accounts.
 type ClaudeTokenProvider struct {
-	accountRepo   AccountRepository
-	tokenCache    ClaudeTokenCache
-	oauthService  *OAuthService
-	refreshAPI    *OAuthRefreshAPI
-	executor      OAuthRefreshExecutor
-	refreshPolicy ProviderRefreshPolicy
+	regionalSnapshot *SchedulerSnapshotService
+	accountRepo      AccountRepository
+	tokenCache       ClaudeTokenCache
+	oauthService     *OAuthService
+	refreshAPI       *OAuthRefreshAPI
+	executor         OAuthRefreshExecutor
+	refreshPolicy    ProviderRefreshPolicy
 }
 
 func NewClaudeTokenProvider(
@@ -53,6 +54,9 @@ func (p *ClaudeTokenProvider) SetRefreshPolicy(policy ProviderRefreshPolicy) {
 
 // GetAccessToken returns a valid access_token.
 func (p *ClaudeTokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
+	if p.regionalSnapshot != nil {
+		return localRegionalAccessToken(ctx, p.regionalSnapshot, account)
+	}
 	if account == nil {
 		return "", errors.New("account is nil")
 	}

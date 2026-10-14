@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/regional/accountstate"
 	"github.com/Wei-Shaw/sub2api/internal/regional/control"
 	"io"
 	"log/slog"
@@ -25,6 +27,7 @@ import (
 // The provisioned membership describes the complete primary deployment epoch.
 // Revoking its old Redis identity is required before any regional grant.
 type RegionalConcurrencyRuntimeConfig struct {
+	RPMTargets       []RegionalRPMTarget
 	Mode             string
 	Region           string
 	Instance         string
@@ -239,6 +242,24 @@ func (c *regionalConcurrencyCache) RunRegionalRuntime(ctx context.Context) {
 	for {
 		cycle, cancel := context.WithTimeout(ctx, 20*time.Second)
 		if c.broker != nil {
+			states := &accountstate.States{DB: c.database(), Region: c.local.Region}
+			ids := []int64{}
+			var minute int64
+			if err := c.database().QueryRowContext(cycle, "SELECT floor(extract(epoch FROM clock_timestamp())/60)::bigint").Scan(&minute); err == nil {
+				localRPM := &accountstate.RPMLocal{DB: c.database(), Region: c.local.Region}
+				for _, target := range c.runtimeConfig.RPMTargets {
+					ids = append(ids, target.AccountID)
+					g := accountstate.RPMGrant{ID: fmt.Sprintf("rpm-%s-%d-%d", c.local.Region, target.AccountID, minute), Region: c.local.Region, AccountID: target.AccountID, Minute: minute, Units: target.Units}
+					if err := localRPM.Fetch(cycle, c.brokerClient, g); err != nil {
+						slog.Warn("regional RPM grant unavailable")
+					}
+
+				}
+			}
+			if err := states.Sync(cycle, c.brokerClient, ids); err != nil {
+				slog.Warn("regional account state sync unavailable")
+			}
+
 			for _, target := range c.runtimeConfig.Targets {
 				if err := c.broker.EnsureSlots(cycle, target.Resource, target.Capacity, time.Duration(c.runtimeConfig.LifetimeSeconds)*time.Second); err != nil {
 					slog.Warn("regional slot target not ready")
@@ -290,6 +311,12 @@ func (c *regionalConcurrencyCache) prepareControl() error {
 		if err != nil {
 			return errors.New("regional control listener unavailable")
 		}
+		rpmAuthority := newRegionalRPMPrimary(c.database())
+		rpmAuthority.Guard = c.primary.GrantGuard
+		mux := http.NewServeMux()
+		mux.Handle(control.Prefix+"/accounts/", &control.AccountHandler{Scope: cfg.Scope, RPM: rpmAuthority, States: &accountstate.States{DB: c.database()}})
+		mux.Handle("/", handler)
+		handler = mux
 		c.controlListener = listener
 		c.controlServer = &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{cert}, ClientCAs: roots, ClientAuth: tls.RequireAndVerifyClientCert}}
 	} else {

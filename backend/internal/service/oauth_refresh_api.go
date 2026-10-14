@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -125,10 +126,12 @@ func snapshotOAuthRefreshAccount(account *Account) *Account {
 // OAuthRefreshAPI 统一的 OAuth Token 刷新入口
 // 封装分布式锁、进程内互斥锁、DB 重读、已刷新检查、竞争恢复等通用逻辑
 type OAuthRefreshAPI struct {
-	accountRepo AccountRepository
-	tokenCache  GeminiTokenCache // 可选，nil = 无分布式锁
-	lockTTL     time.Duration
-	localLocks  sync.Map // key: cacheKey string -> value: *contextMutex
+	regionalDB         *sql.DB
+	regionalSubscriber bool
+	accountRepo        AccountRepository
+	tokenCache         GeminiTokenCache // 可选，nil = 无分布式锁
+	lockTTL            time.Duration
+	localLocks         sync.Map // key: cacheKey string -> value: *contextMutex
 }
 
 // NewOAuthRefreshAPI 创建统一刷新 API
@@ -179,6 +182,19 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 	}
 	if executor == nil {
 		return nil, errors.New("oauth refresh executor is nil")
+	}
+	if api.regionalSubscriber {
+		return nil, errors.New("regional OAuth refresh is owned by primary")
+	}
+	if api.regionalDB != nil {
+		release, err := api.lockRegionalRefresh(ctx, account.ID)
+		if err != nil {
+			return nil, err
+		}
+		if release == nil {
+			return &OAuthRefreshResult{LockHeld: true}, nil
+		}
+		defer release()
 	}
 	requestPath := isOAuthRefreshRequestPath(ctx)
 	cacheKey := executor.CacheKey(account)
@@ -254,6 +270,19 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 	}
 
 	// 4. 执行平台特定刷新逻辑
+	if api.regionalDB != nil {
+		result, err := api.regionalDB.ExecContext(ctx, "INSERT INTO regional_oauth_refresh_fences(account_id,state) VALUES($1,'started') ON CONFLICT(account_id) DO UPDATE SET state='started',started_at=clock_timestamp() WHERE regional_oauth_refresh_fences.state='completed'", account.ID)
+		if err != nil {
+			return nil, err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		if n != 1 {
+			return nil, errors.New("previous OAuth refresh outcome requires reconciliation")
+		}
+	}
 	attemptedAccount := snapshotOAuthRefreshAccount(freshAccount)
 	newCredentials, refreshErr := executor.Refresh(ctx, freshAccount)
 	if ctxErr := ctx.Err(); ctxErr != nil {
@@ -365,6 +394,14 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 		}
 	}
 
+	if api.regionalDB != nil {
+		if newCredentials == nil {
+			return nil, errors.New("OAuth refresh returned no durable credentials")
+		}
+		if _, err := api.regionalDB.ExecContext(ctx, "UPDATE regional_oauth_refresh_fences SET state='completed' WHERE account_id=$1 AND state='started'", account.ID); err != nil {
+			return nil, err
+		}
+	}
 	return &OAuthRefreshResult{
 		Refreshed:      true,
 		NewCredentials: newCredentials,

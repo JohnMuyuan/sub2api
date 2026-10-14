@@ -17,6 +17,7 @@ const (
 
 // GeminiTokenProvider manages access_token for Gemini OAuth and Vertex service account accounts.
 type GeminiTokenProvider struct {
+	regionalSnapshot   *SchedulerSnapshotService
 	accountRepo        AccountRepository
 	tokenCache         GeminiTokenCache
 	geminiOAuthService *GeminiOAuthService
@@ -50,6 +51,9 @@ func (p *GeminiTokenProvider) SetRefreshPolicy(policy ProviderRefreshPolicy) {
 }
 
 func (p *GeminiTokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
+	if p.regionalSnapshot != nil {
+		return localRegionalAccessToken(ctx, p.regionalSnapshot, account)
+	}
 	if account == nil {
 		return "", errors.New("account is nil")
 	}

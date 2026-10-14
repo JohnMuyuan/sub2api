@@ -27,6 +27,7 @@ var (
 type GrokTokenCache = GeminiTokenCache
 
 type GrokTokenProvider struct {
+	regionalSnapshot *SchedulerSnapshotService
 	accountRepo      AccountRepository
 	tokenCache       GrokTokenCache
 	refreshAPI       *OAuthRefreshAPI
@@ -60,6 +61,9 @@ func (p *GrokTokenProvider) SetTempUnschedCache(cache TempUnschedCache) {
 }
 
 func (p *GrokTokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
+	if p.regionalSnapshot != nil {
+		return localRegionalAccessToken(ctx, p.regionalSnapshot, account)
+	}
 	if account == nil {
 		return "", errors.New("account is nil")
 	}
