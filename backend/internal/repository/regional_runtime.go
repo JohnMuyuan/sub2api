@@ -115,7 +115,10 @@ func provideRegionalConcurrencyCache(base service.ConcurrencyCache, rdb *redis.C
 	if err != nil {
 		return nil, err
 	}
-	cache := value.(*regionalConcurrencyCache)
+	cache, ok := value.(*regionalConcurrencyCache)
+	if !ok {
+		return nil, errors.New("regional concurrency provider type mismatch")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if _, err = db.ExecContext(ctx, "INSERT INTO regional_runtime_members(epoch,instance_id,role) VALUES($1,$2,$3) ON CONFLICT(epoch,instance_id) DO UPDATE SET heartbeat_at=clock_timestamp(),role=EXCLUDED.role", c.Epoch, c.Instance, c.Mode); err != nil {
@@ -147,10 +150,10 @@ func regionalLegacyGuard(rdb *redis.Client, c RegionalConcurrencyRuntimeConfig) 
 		if user != nil {
 			off := false
 			switch data := user.(type) {
-			case []interface{}:
+			case []any:
 				for i := 0; i+1 < len(data); i += 2 {
 					if data[i] == "flags" {
-						if flags, ok := data[i+1].([]interface{}); ok {
+						if flags, ok := data[i+1].([]any); ok {
 							for _, flag := range flags {
 								if flag == "off" {
 									off = true
@@ -159,8 +162,8 @@ func regionalLegacyGuard(rdb *redis.Client, c RegionalConcurrencyRuntimeConfig) 
 						}
 					}
 				}
-			case map[interface{}]interface{}:
-				if flags, ok := data["flags"].([]interface{}); ok {
+			case map[any]any:
+				if flags, ok := data["flags"].([]any); ok {
 					for _, flag := range flags {
 						if flag == "off" {
 							off = true
