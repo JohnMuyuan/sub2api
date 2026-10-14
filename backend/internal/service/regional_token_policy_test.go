@@ -43,27 +43,24 @@ func TestRegionalCredentialShadowAndParentLookupNeverUsePrimary(t *testing.T) {
 	replica := regionalTestReplica(t, filepath.Join(t.TempDir(), "shadow"), true)
 	parent := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Credentials: map[string]any{"access_token": "local-parent", "expires_at": time.Now().Add(time.Hour).Format(time.RFC3339)}}
 	shadow := &Account{ID: 2, ParentAccountID: &parent.ID, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
-	// Scheduler export flattens shadow credentials and rejects parent pointers
-	// in the wire payload. Keep the stale selected shadow outside the snapshot.
-	projected := *shadow
-	projected.ParentAccountID = nil
-	projected.Credentials = parent.Credentials
-	require.NoError(t, replica.PublishNext(ctx, "test", time.Minute, regionalDoc(t, parent, &projected)))
+	// The wire contract rejects shadow pointers. An unassigned synthetic
+	// shadow must fail locally even while its credential parent is authorized.
+	require.NoError(t, replica.PublishNext(ctx, "test", time.Minute, regionalDoc(t, parent)))
 	reader, err := NewRegionalSchedulerReader(replica)
 	require.NoError(t, err)
 	snapshot := NewSchedulerSnapshotService(nil, nil, nil, nil, nil)
 	snapshot.SetLocalSnapshotReader(reader)
 	gateway := &OpenAIGatewayService{schedulerSnapshot: snapshot, openAITokenProvider: &OpenAITokenProvider{regionalSnapshot: snapshot}}
-	token, _, err := gateway.GetAccessToken(ctx, shadow)
+	token, _, err := gateway.GetAccessToken(ctx, parent)
 	require.NoError(t, err)
 	require.Equal(t, "local-parent", token)
-	require.Equal(t, parent.ID, gateway.parentAccountLookup(ctx)(parent.ID).ID)
-	require.NoError(t, replica.PublishNext(ctx, "test", time.Minute, regionalDoc(t, &projected)))
-	token, _, err = gateway.GetAccessToken(ctx, shadow)
-	require.NoError(t, err)
-	require.Equal(t, "local-parent", token)
-	require.Nil(t, gateway.parentAccountLookup(ctx)(parent.ID))
-	require.NoError(t, replica.PublishNext(ctx, "test", time.Minute, regionalDoc(t)))
 	_, _, err = gateway.GetAccessToken(ctx, shadow)
 	require.Error(t, err)
+	require.Equal(t, parent.ID, gateway.parentAccountLookup(ctx)(parent.ID).ID)
+	require.NoError(t, replica.PublishNext(ctx, "test", time.Minute, regionalDoc(t)))
+	_, _, err = gateway.GetAccessToken(ctx, parent)
+	require.Error(t, err)
+	_, _, err = gateway.GetAccessToken(ctx, shadow)
+	require.Error(t, err)
+	require.Nil(t, gateway.parentAccountLookup(ctx)(parent.ID))
 }
