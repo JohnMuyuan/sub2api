@@ -116,3 +116,23 @@ func TestRegionalMeterOutboundBounds(t *testing.T) {
 	}
 	require.NoError(t, regionalMeterValidatePayload(ctx, []byte("{\"model\":\"mock-text\",\"max_output_tokens\":10}")))
 }
+
+func TestRegionalMeterOAuthReservesFullOutputWindow(t *testing.T) {
+	l := &meterTestLedger{}
+	s := &OpenAIGatewayService{regionalMetering: testRegionalMeter(l)}
+	body := []byte("{\"model\":\"mock-text\",\"input\":\"hi\",\"max_output_tokens\":10}")
+	c := newOpenAIRejectedFieldTestContext(body)
+	c.Set("api_key", &APIKey{ID: 4, UserID: 5})
+	account := newOpenAIRejectedFieldTestAccount()
+	account.Type = AccountTypeOAuth
+	ctx, _, err := s.beginRegionalMeter(context.Background(), c, account, body)
+	require.NoError(t, err)
+	a := regionalMeterAttemptFrom(ctx)
+	require.Equal(t, a.price.MaxOutput, a.output)
+	expected, err := a.price.Maximum(a.price.MaxOutput)
+	require.NoError(t, err)
+	require.Equal(t, expected, a.reservation.Maximum)
+	require.NoError(t, regionalMeterValidatePayload(ctx, []byte("{\"model\":\"mock-text\"}")))
+	a.fullOutputWindow = false
+	require.Error(t, regionalMeterValidatePayload(ctx, []byte("{\"model\":\"mock-text\"}")))
+}

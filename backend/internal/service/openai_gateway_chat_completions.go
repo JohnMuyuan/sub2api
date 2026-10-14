@@ -65,6 +65,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	if err != nil {
 		return nil, err
 	}
+	if regionalMeterAttemptFrom(meterCtx) != nil && c.Request != nil {
+		c.Request = c.Request.WithContext(meterCtx)
+	}
 	result, err := s.forwardAsChatCompletions(meterCtx, c, account, body, promptCacheKey, defaultMappedModel, false)
 	return result, regionalMeterFinishForward(meterCtx, result, err, finish)
 }
@@ -712,6 +715,10 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		observer = beginUpstreamResponseModelObservation(c)
 	}
 	observer.Observe(finalResponse.Model, true)
+	if finalResponse.Usage != nil && c.Request != nil {
+		raw, _ := json.Marshal(finalResponse)
+		regionalMeterObserveUsage(c.Request.Context(), raw, "json")
+	}
 	observer.ObserveServiceTier(finalResponse.ServiceTier, true)
 	if strings.TrimSpace(finalResponse.Status) == "failed" {
 		payload, _ := json.Marshal(gin.H{"type": "response.failed", "response": finalResponse})
@@ -940,6 +947,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			return false
 		}
 		observer.ObserveOpenAI([]byte(payload), event.Type)
+		if c.Request != nil {
+			regionalMeterObserveUsage(c.Request.Context(), []byte(payload), event.Type)
+		}
 		refusalDetector.ObservePayload([]byte(payload))
 		s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
 

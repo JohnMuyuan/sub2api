@@ -34,6 +34,12 @@ func NewRegionalFundsAuthorities(db *sql.DB, guard func(context.Context, *sql.Tx
 	holds := &ledger.PrimaryRequests{DB: db}
 	holds.Funding = regionalBalanceFunding
 	holds.Authorize = func(ctx context.Context, tx *sql.Tx, r ledger.Reservation) error {
+		if guard == nil {
+			return errors.New("funds cutover evidence required")
+		}
+		if err := guard(ctx, tx); err != nil {
+			return err
+		}
 		return scope.Reserve(ctx, tx, "request:"+r.RequestID, r.UserID, r.APIKeyID, r.AccountID, r.Maximum)
 	}
 	holds.SettleScope = ledger.PricingVerifier(func(ctx context.Context, tx *sql.Tx, e ledger.Event) error {

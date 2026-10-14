@@ -51,12 +51,13 @@ func WithRegionalMetering(m *RegionalMetering) OpenAIGatewayOption {
 
 type regionalMeterKey struct{}
 type regionalMeterAttempt struct {
-	ledger      ledger.RequestLedger
-	reservation ledger.Reservation
-	price       ledger.Price
-	output      int64
-	sent        atomic.Bool
-	finalUsage  atomic.Pointer[OpenAIUsage]
+	ledger           ledger.RequestLedger
+	reservation      ledger.Reservation
+	price            ledger.Price
+	output           int64
+	fullOutputWindow bool
+	sent             atomic.Bool
+	finalUsage       atomic.Pointer[OpenAIUsage]
 }
 type regionalMeterSessionKey struct{}
 type regionalMeterSession struct {
@@ -142,7 +143,8 @@ func regionalMeterValidatePayload(ctx context.Context, raw []byte) error {
 	if !limit.Exists() {
 		limit = gjson.GetBytes(raw, "max_tokens")
 	}
-	if model != a.price.Model || limit.Type != gjson.Number || limit.Int() <= 0 || limit.Int() > a.output {
+	fullWindow := a.fullOutputWindow && a.output == a.price.MaxOutput && !limit.Exists()
+	if model != a.price.Model || (!fullWindow && (limit.Type != gjson.Number || limit.Int() <= 0 || limit.Int() > a.output)) {
 		return errors.New("outbound model/output limit changed; regional request refused")
 	}
 	for _, field := range []string{"tools", "previous_response_id", "conversation", "service_tier"} {
@@ -256,12 +258,15 @@ func (s *OpenAIGatewayService) beginRegionalMeter(ctx context.Context, c *gin.Co
 	}
 	// Other adapters have automatic tools or sends outside the native boundary.
 	// They need separate certified bounds before metering can accept them.
-	if account.Platform != PlatformOpenAI || account.IsOpenAIPassthroughEnabled() || account.IsOpenAIAgentIdentity() || account.IsOpenAIPersonalAccessToken() || account.IsCopilotSDKEnabled() || accountHasPrismBrowser(account) || s.pluginManager != nil {
+	if account.Platform != PlatformOpenAI || account.IsOpenAIPassthroughEnabled() || account.IsOpenAIAgentIdentity() || account.IsOpenAIPersonalAccessToken() || account.IsCopilotSDKEnabled() || accountHasPrismBrowser(account) || (s.pluginManager != nil && s.pluginManager.ShouldRouteOpenAIOAuth(account)) {
 		return ctx, nil, errors.New("adapter does not expose a bounded regional send")
 	}
 	model, output, err := regionalTextOutputBound(body)
 	if err != nil {
 		return ctx, nil, err
+	}
+	if account.IsExcelBPSEnabledForModel(model) && s.excelBPSGloballyEnabled(ctx) {
+		return ctx, nil, errors.New("BPS adapter has no certified regional cost bound")
 	}
 	r, p, err := m.Admit(ctx, key, account, body)
 	if err != nil {
@@ -269,6 +274,9 @@ func (s *OpenAIGatewayService) beginRegionalMeter(ctx context.Context, c *gin.Co
 	}
 	if r.UserID != key.UserID || r.APIKeyID != key.ID || r.AccountID != account.ID || p.Model != model {
 		return ctx, nil, ledger.ErrConflict
+	}
+	if account.Type == AccountTypeOAuth {
+		output = p.MaxOutput
 	}
 	maximum, err := p.Maximum(output)
 	if err != nil {
@@ -286,7 +294,7 @@ func (s *OpenAIGatewayService) beginRegionalMeter(ctx context.Context, c *gin.Co
 	if !fresh {
 		return ctx, nil, ledger.ErrAlreadyDispatched
 	}
-	attempt := &regionalMeterAttempt{ledger: m.Ledger, reservation: r, price: p, output: output}
+	attempt := &regionalMeterAttempt{ledger: m.Ledger, reservation: r, price: p, output: output, fullOutputWindow: account.Type == AccountTypeOAuth}
 	ctx = context.WithValue(ctx, regionalMeterKey{}, attempt)
 	finish := func(result *OpenAIForwardResult, forwardErr error) error {
 		if result != nil {

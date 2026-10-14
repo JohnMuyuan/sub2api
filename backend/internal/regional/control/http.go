@@ -165,7 +165,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(400)
 			return
 		}
-		if lease.RegionID != h.Scope.Region || !contains(h.Scope.UserIDs, lease.UserID) || lease.Granted > h.Scope.MaximumGrant || lease.ExpiresAt.Sub(lease.IssuedAt) > h.Scope.MaximumLifetime {
+		if lease.RegionID != h.Scope.Region || !contains(h.Scope.UserIDs, lease.UserID) || (lease.APIKeyID != 0 && !contains(h.Scope.APIKeyIDs, lease.APIKeyID)) || (lease.AccountID != 0 && !contains(h.Scope.AccountIDs, lease.AccountID)) || lease.Granted > h.Scope.MaximumGrant || lease.ExpiresAt.Sub(lease.IssuedAt) > h.Scope.MaximumLifetime {
 			w.WriteHeader(403)
 			return
 		}
@@ -233,7 +233,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		switch {
-		case errors.Is(err, slots.ErrExpiredUnissued):
+		case errors.Is(err, slots.ErrExpiredUnissued), errors.Is(err, ledger.ErrExpiredUnissued):
 			w.WriteHeader(http.StatusGone)
 		case errors.Is(err, ledger.ErrConflict), errors.Is(err, slots.ErrConflict):
 			w.WriteHeader(409)
