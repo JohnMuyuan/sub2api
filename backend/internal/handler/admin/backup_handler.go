@@ -1,6 +1,11 @@
 package admin
 
 import (
+	"errors"
+	"io"
+	"mime"
+	"net/http"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -88,19 +93,23 @@ func (h *BackupHandler) UpdateSchedule(c *gin.Context) {
 // ─── 备份操作 ───
 
 type CreateBackupRequest struct {
-	ExpireDays *int `json:"expire_days"` // nil=使用默认值14，0=永不过期
+	Storage    string `json:"storage"`
+	ExpireDays *int   `json:"expire_days"` // nil=使用默认值14，0=永不过期
 }
 
 func (h *BackupHandler) CreateBackup(c *gin.Context) {
 	var req CreateBackupRequest
-	_ = c.ShouldBindJSON(&req) // 允许空 body
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
 
 	expireDays := 14 // 默认14天过期
 	if req.ExpireDays != nil {
 		expireDays = *req.ExpireDays
 	}
 
-	record, err := h.backupService.StartBackup(c.Request.Context(), "manual", expireDays)
+	record, err := h.backupService.StartBackup(c.Request.Context(), "manual", expireDays, req.Storage)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -255,4 +264,43 @@ func (h *BackupHandler) TestImageStorageConnection(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"ok": true, "message": "connection successful"})
+}
+
+func (h *BackupHandler) GetLocalConfig(c *gin.Context) {
+	cfg, err := h.backupService.GetLocalConfig(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
+}
+func (h *BackupHandler) UpdateLocalConfig(c *gin.Context) {
+	var req service.BackupLocalConfig
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	cfg, err := h.backupService.UpdateLocalConfig(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
+}
+func (h *BackupHandler) DownloadLocalBackup(c *gin.Context) {
+	file, record, err := h.backupService.OpenLocalBackup(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	defer func() { _ = file.Close() }()
+	info, err := file.Stat()
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	c.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": record.FileName}))
+	c.Header("Content-Type", "application/zip")
+	c.Header("Cache-Control", "no-store")
+	http.ServeContent(c.Writer, c.Request, record.FileName, info.ModTime(), file)
 }

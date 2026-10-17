@@ -111,6 +111,7 @@ func (c *BackupS3Config) IsConfigured() bool {
 
 // BackupScheduleConfig 定时备份配置
 type BackupScheduleConfig struct {
+	Storage        string                      `json:"storage,omitempty"` // empty/s3 or local ZIP
 	Enabled        bool                        `json:"enabled"`
 	CronExpr       string                      `json:"cron_expr"`    // cron 表达式，如 "0 2 * * *" 每天凌晨2点
 	RetainDays     int                         `json:"retain_days"`  // 备份文件过期天数，默认14，0=不自动清理
@@ -120,6 +121,8 @@ type BackupScheduleConfig struct {
 
 // BackupRecord 备份记录
 type BackupRecord struct {
+	Storage          string                `json:"storage,omitempty"`
+	LocalDirectory   string                `json:"local_directory,omitempty"`
 	ID               string                `json:"id"`
 	Status           string                `json:"status"`      // pending, running, completed, failed
 	BackupType       string                `json:"backup_type"` // postgres
@@ -322,7 +325,7 @@ func backupOperationExpired(started string, now time.Time) bool {
 }
 
 func (s *BackupService) cleanupStaleBackupObjects(ctx context.Context, record *BackupRecord) error {
-	if len(backupObjectKeys(record)) == 0 {
+	if record.Storage != "local" && len(backupObjectKeys(record)) == 0 {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, backupObjectCleanupTimeout)
@@ -474,6 +477,18 @@ func (s *BackupService) GetSchedule(ctx context.Context) (*BackupScheduleConfig,
 }
 
 func (s *BackupService) UpdateSchedule(ctx context.Context, cfg BackupScheduleConfig) (*BackupScheduleConfig, error) {
+	if cfg.Storage != "" && cfg.Storage != "s3" && cfg.Storage != "local" {
+		return nil, infraerrors.BadRequest("INVALID_BACKUP_STORAGE", "backup storage must be s3 or local")
+	}
+	if cfg.Enabled && cfg.Storage == "local" {
+		local, err := s.GetLocalConfig(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateLocalBackupDirectory(local.Directory); err != nil {
+			return nil, err
+		}
+	}
 	if err := validateBackupRetention(&cfg); err != nil {
 		return nil, err
 	}
@@ -601,6 +616,9 @@ func (s *BackupService) CreateBackup(ctx context.Context, triggeredBy string, ex
 }
 
 func (s *BackupService) createBackup(ctx context.Context, triggeredBy string, expireDays int, schedule *BackupScheduleConfig) (*BackupRecord, error) {
+	if schedule != nil && schedule.Storage == "local" {
+		return s.startLocalBackup(ctx, triggeredBy, expireDays, schedule, false)
+	}
 	if s.shuttingDown.Load() {
 		return nil, infraerrors.ServiceUnavailable("SERVER_SHUTTING_DOWN", "server is shutting down")
 	}
@@ -609,6 +627,10 @@ func (s *BackupService) createBackup(ctx context.Context, triggeredBy string, ex
 	if s.backingUp {
 		s.opMu.Unlock()
 		return nil, ErrBackupInProgress
+	}
+	if s.restoring {
+		s.opMu.Unlock()
+		return nil, ErrRestoreInProgress
 	}
 	s.backingUp = true
 	s.opMu.Unlock()
@@ -683,7 +705,13 @@ func (s *BackupService) createBackup(ctx context.Context, triggeredBy string, ex
 }
 
 // StartBackup 异步创建备份，立即返回 running 状态的记录
-func (s *BackupService) StartBackup(ctx context.Context, triggeredBy string, expireDays int) (*BackupRecord, error) {
+func (s *BackupService) StartBackup(ctx context.Context, triggeredBy string, expireDays int, storage ...string) (*BackupRecord, error) {
+	if len(storage) > 0 && storage[0] == "local" {
+		return s.startLocalBackup(ctx, triggeredBy, expireDays, nil, true)
+	}
+	if len(storage) > 0 && storage[0] != "" && storage[0] != "s3" {
+		return nil, infraerrors.BadRequest("INVALID_BACKUP_STORAGE", "backup storage must be s3 or local")
+	}
 	if s.shuttingDown.Load() {
 		return nil, infraerrors.ServiceUnavailable("SERVER_SHUTTING_DOWN", "server is shutting down")
 	}
@@ -692,6 +720,10 @@ func (s *BackupService) StartBackup(ctx context.Context, triggeredBy string, exp
 	if s.backingUp {
 		s.opMu.Unlock()
 		return nil, ErrBackupInProgress
+	}
+	if s.restoring {
+		s.opMu.Unlock()
+		return nil, ErrRestoreInProgress
 	}
 	s.backingUp = true
 	s.opMu.Unlock()
@@ -924,6 +956,10 @@ func (s *BackupService) RestoreBackup(ctx context.Context, backupID string) erro
 		s.opMu.Unlock()
 		return ErrRestoreInProgress
 	}
+	if s.backingUp {
+		s.opMu.Unlock()
+		return ErrBackupInProgress
+	}
 	s.restoring = true
 	s.opMu.Unlock()
 	defer func() {
@@ -938,6 +974,10 @@ func (s *BackupService) RestoreBackup(ctx context.Context, backupID string) erro
 	}
 	if record.Status != "completed" {
 		return infraerrors.BadRequest("BACKUP_NOT_COMPLETED", "can only restore from a completed backup")
+	}
+
+	if record.Storage == "local" {
+		return s.restoreLocalZIP(ctx, record)
 	}
 
 	s3Cfg, err := s.loadS3Config(ctx)
@@ -991,6 +1031,10 @@ func (s *BackupService) StartRestore(ctx context.Context, backupID string) (*Bac
 		s.opMu.Unlock()
 		return nil, ErrRestoreInProgress
 	}
+	if s.backingUp {
+		s.opMu.Unlock()
+		return nil, ErrBackupInProgress
+	}
 	s.restoring = true
 	s.opMu.Unlock()
 
@@ -1012,11 +1056,7 @@ func (s *BackupService) StartRestore(ctx context.Context, backupID string) (*Bac
 		return nil, infraerrors.BadRequest("BACKUP_NOT_COMPLETED", "can only restore from a completed backup")
 	}
 
-	s3Cfg, err := s.loadS3Config(ctx)
-	if err != nil {
-		return nil, err
-	}
-	objectStore, err := s.getOrCreateStore(ctx, s3Cfg)
+	objectStore, err := s.restoreObjectStore(ctx, record)
 	if err != nil {
 		return nil, fmt.Errorf("init object store: %w", err)
 	}
@@ -1057,6 +1097,20 @@ func (s *BackupService) StartRestore(ctx context.Context, backupID string) (*Bac
 func (s *BackupService) executeRestore(record *BackupRecord, objectStore BackupObjectStore) {
 	ctx, cancel := context.WithTimeout(s.bgCtx, 30*time.Minute)
 	defer cancel()
+	if record.Storage == "local" {
+		err := s.restoreLocalZIP(ctx, record)
+		if err != nil {
+			record.RestoreStatus = "failed"
+			record.RestoreError = err.Error()
+		} else {
+			record.RestoreStatus = "completed"
+			record.RestoredAt = time.Now().Format(time.RFC3339)
+		}
+		if saveErr := s.saveRestoreRecord(context.Background(), record); saveErr != nil {
+			logger.LegacyPrintf("service.backup", "[Backup] save local restore result: %v", saveErr)
+		}
+		return
+	}
 
 	if len(record.Parts) > 0 {
 		archivePath, err := s.downloadBackupParts(ctx, objectStore, record.Parts)
@@ -1587,6 +1641,9 @@ func backupObjectKeys(record *BackupRecord) []string {
 
 // deleteBackupObjects 尝试删除记录关联的所有对象，并聚合删除错误。
 func (s *BackupService) deleteBackupObjects(ctx context.Context, record *BackupRecord) error {
+	if record.Storage == "local" {
+		return deleteLocalBackup(record)
+	}
 	if len(backupObjectKeys(record)) == 0 {
 		return nil
 	}

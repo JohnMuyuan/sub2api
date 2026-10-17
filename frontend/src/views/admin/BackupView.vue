@@ -1,5 +1,17 @@
 <template>
     <div class="space-y-6">
+      <div class="card p-6" data-testid="backup-local-settings">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.backup.local.title') }}</h3>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.backup.local.description') }}</p>
+        <label for="backup-local-directory" class="input-label mt-4">{{ t('admin.backup.local.directory') }}</label>
+        <input id="backup-local-directory" v-model="localDirectory" class="input w-full" placeholder="/app/data/backups" />
+        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.backup.local.dockerHint') }}</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.backup.local.contentsHint') }}</p>
+        <button type="button" class="btn btn-primary btn-sm mt-4" :disabled="savingLocal || !localDirectory.trim()" @click="saveLocalConfig">
+          {{ savingLocal ? t('common.loading') : t('common.save') }}
+        </button>
+      </div>
+
       <!-- S3 Storage Config -->
       <div class="card p-6">
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -149,6 +161,13 @@
             <input v-model="scheduleForm.cron_expr" class="input w-full" placeholder="0 2 * * *" />
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.backup.schedule.cronHint') }}</p>
           </div>
+          <div>
+            <label for="backup-schedule-storage" class="input-label">{{ t('admin.backup.local.destination') }}</label>
+            <select id="backup-schedule-storage" v-model="scheduleForm.storage" class="input w-full">
+              <option value="s3">S3</option>
+              <option value="local">{{ t('admin.backup.local.title') }}</option>
+            </select>
+          </div>
           <h4 class="mt-2 text-sm font-medium text-gray-900 dark:text-white md:col-span-2">{{ t('admin.backup.schedule.ordinaryRetention') }}</h4>
           <div>
             <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('admin.backup.schedule.retainDays') }}</label>
@@ -191,6 +210,10 @@
               <label class="text-xs text-gray-600 dark:text-gray-400">{{ t('admin.backup.operations.expireDays') }}</label>
               <input v-model.number="manualExpireDays" type="number" min="0" class="input w-20 text-xs" />
             </div>
+            <select v-model="manualStorage" class="input w-auto" :aria-label="t('admin.backup.local.destination')" data-testid="backup-manual-storage">
+              <option value="s3">S3</option>
+              <option value="local">{{ t('admin.backup.local.title') }}</option>
+            </select>
             <button type="button" class="btn btn-primary btn-sm" :disabled="creatingBackup" @click="createBackup">
               {{ creatingBackup ? t('admin.backup.operations.backing') : t('admin.backup.operations.createBackup') }}
             </button>
@@ -230,6 +253,7 @@
                 </td>
                 <td class="py-3 pr-4 text-xs">
                   {{ record.file_name }}
+                  <div v-if="record.storage === 'local'" class="mt-1 break-all text-gray-500 dark:text-gray-400">{{ record.local_directory }}</div>
                   <span v-if="record.monthly_archive" class="ml-1 inline-block rounded bg-primary-50 px-1.5 py-0.5 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">{{ t('admin.backup.archive.badge') }}</span>
                   <div v-if="record.monthly_archive" class="mt-1 text-gray-500 dark:text-gray-400">{{ record.monthly_archive.dates.join(' / ') }}</div>
                 </td>
@@ -445,6 +469,25 @@ function reportStepUpBlocked(error: unknown): boolean {
   return true
 }
 
+const localDirectory = ref('')
+const savingLocal = ref(false)
+const manualStorage = ref<'s3' | 'local'>('s3')
+
+async function loadLocalConfig() {
+  try { localDirectory.value = (await adminAPI.backup.getLocalConfig()).directory }
+  catch (error) { appStore.showError((error as Error)?.message || t('errors.networkError')) }
+}
+async function saveLocalConfig() {
+  savingLocal.value = true
+  try {
+    const cfg = await backupStepUp.run(() => adminAPI.backup.updateLocalConfig({ directory: localDirectory.value }))
+    localDirectory.value = cfg.directory
+    appStore.showSuccess(t('admin.backup.local.saved'))
+  } catch (error) {
+    if (!isStepUpCancelled(error) && !reportStepUpBlocked(error)) appStore.showError((error as Error)?.message || t('errors.networkError'))
+  } finally { savingLocal.value = false }
+}
+
 // S3 config
 const s3Form = ref<BackupS3Config>({
   endpoint: '',
@@ -483,6 +526,7 @@ const testingImageStorage = ref(false)
 const scheduleForm = ref<BackupScheduleConfig>({
   enabled: false,
   cron_expr: '0 2 * * *',
+  storage: 's3',
   retain_days: 14,
   retain_count: 10,
 })
@@ -757,6 +801,7 @@ async function loadSchedule() {
     const cfg = await adminAPI.backup.getSchedule()
     scheduleForm.value = {
       enabled: cfg.enabled,
+      storage: cfg.storage || 's3',
       cron_expr: cfg.cron_expr || '0 2 * * *',
       retain_days: cfg.retain_days ?? 14,
       retain_count: cfg.retain_count ?? 10,
@@ -803,7 +848,7 @@ async function loadBackups() {
 async function createBackup() {
   creatingBackup.value = true
   try {
-    const record = await backupStepUp.run(() => adminAPI.backup.createBackup({ expire_days: manualExpireDays.value }))
+    const record = await backupStepUp.run(() => adminAPI.backup.createBackup({ expire_days: manualExpireDays.value, ...(manualStorage.value === 'local' ? { storage: 'local' as const } : {}) }))
     // 插入到列表顶部
     backups.value.unshift(record)
     startPolling(record.id)
@@ -827,6 +872,17 @@ async function createBackup() {
 
 async function downloadBackup(id: string) {
   try {
+    const record = backups.value.find(item => item.id === id)
+    if (record?.storage === 'local') {
+      const data = await backupStepUp.run(() => adminAPI.backup.downloadLocalBackup(id))
+      const url = URL.createObjectURL(data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = record.file_name
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      return
+    }
     const result = await backupStepUp.run(() => adminAPI.backup.getDownloadURL(id))
     if (result.parts && result.parts.length > 0) {
       downloadParts.value = result.parts
@@ -917,7 +973,7 @@ function formatDate(value?: string): string {
 
 onMounted(async () => {
   document.addEventListener('visibilitychange', handleVisibilityChange)
-  await Promise.all([loadS3Config(), loadImageStorageConfig(), loadSchedule(), loadBackups()])
+  await Promise.all([loadLocalConfig(), loadS3Config(), loadImageStorageConfig(), loadSchedule(), loadBackups()])
 
   // 如果有正在 running 的备份，恢复轮询
   const runningBackup = backups.value.find(r => r.status === 'running')

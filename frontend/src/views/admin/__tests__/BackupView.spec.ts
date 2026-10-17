@@ -4,6 +4,9 @@ import { flushPromises, mount } from '@vue/test-utils'
 import BackupView from '../BackupView.vue'
 
 const {
+  getLocalConfig,
+  updateLocalConfig,
+  createBackup,
   getS3Config,
   getImageStorageConfig,
   getSchedule,
@@ -12,6 +15,9 @@ const {
   listBackups,
   getDownloadURL,
 } = vi.hoisted(() => ({
+  getLocalConfig: vi.fn(),
+  updateLocalConfig: vi.fn(),
+  createBackup: vi.fn(),
   getS3Config: vi.fn(),
   getImageStorageConfig: vi.fn(),
   getSchedule: vi.fn(),
@@ -24,6 +30,8 @@ const {
 vi.mock('@/api', () => ({
   adminAPI: {
     backup: {
+      getLocalConfig,
+      updateLocalConfig,
       getS3Config,
       updateS3Config: vi.fn(),
       testS3Connection: vi.fn(),
@@ -32,7 +40,7 @@ vi.mock('@/api', () => ({
       testImageStorageConnection: vi.fn(),
       getSchedule,
       updateSchedule,
-      createBackup: vi.fn(),
+      createBackup,
       listBackups,
       getBackup: vi.fn(),
       deleteBackup,
@@ -91,7 +99,38 @@ function mountBackupView() {
 }
 
 describe('admin BackupView', () => {
+  it('starts a manual ZIP backup without S3', async () => {
+    const wrapper = mountBackupView()
+    await flushPromises()
+    await wrapper.get('[data-testid="backup-manual-storage"]').setValue('local')
+    const button = wrapper.findAll('button').find(item => item.text() === 'admin.backup.operations.createBackup')
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+    await flushPromises()
+    expect(createBackup).toHaveBeenCalledWith({ expire_days: 14, storage: 'local' })
+  })
+  it('loads and saves the local ZIP directory', async () => {
+    const wrapper = mountBackupView()
+    await flushPromises()
+    expect(wrapper.get<HTMLInputElement>('#backup-local-directory').element.value).toBe('/app/backups')
+    await wrapper.get('#backup-local-directory').setValue('/mnt/backups')
+    await wrapper.get('[data-testid="backup-local-settings"] button').trigger('click')
+    await flushPromises()
+    expect(updateLocalConfig).toHaveBeenCalledWith({ directory: '/mnt/backups' })
+  })
+  it('uses local ZIP storage for the scheduled backup', async () => {
+    const wrapper = mountBackupView()
+    await flushPromises()
+    await wrapper.get('#backup-schedule-storage').setValue('local')
+    await wrapper.get('[data-testid="backup-schedule"] button').trigger('click')
+    await flushPromises()
+    expect(updateSchedule).toHaveBeenCalledWith(expect.objectContaining({ storage: 'local' }))
+  })
+
   beforeEach(() => {
+    getLocalConfig.mockReset().mockResolvedValue({ directory: '/app/backups' })
+    updateLocalConfig.mockReset().mockResolvedValue({ directory: '/app/backups' })
+    createBackup.mockReset().mockResolvedValue({ ...baseRecord('local-new'), storage: 'local', status: 'completed' })
     getS3Config.mockResolvedValue({})
     getImageStorageConfig.mockResolvedValue({ config: {}, secret_configured: false })
     getSchedule.mockResolvedValue({ enabled: false, cron_expr: '', retain_days: 14, retain_count: 10 })

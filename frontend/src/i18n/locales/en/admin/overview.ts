@@ -82,6 +82,15 @@ export default {
     },
 
     backup: {
+      local: {
+        title: 'Local ZIP backup',
+        description: 'Back up the PostgreSQL database as a ZIP in a server directory.',
+        directory: 'Backup directory (absolute path)',
+        destination: 'Backup destination',
+        dockerHint: 'For Docker, use a container path such as /app/data/backups and mount it to a host directory. The application user needs write access.',
+        contentsHint: 'The ZIP contains database.sql, including database accounts, settings and usage. Back up server environment variables, key files and image objects separately.',
+        saved: 'Local backup directory saved',
+      },
       title: 'Database Backup',
       description: 'Full database backup to S3-compatible storage with scheduled backup and restore',
       s3: {
