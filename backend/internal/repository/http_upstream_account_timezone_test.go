@@ -18,6 +18,17 @@ type timezoneAccountReader struct {
 	account *service.Account
 }
 
+func TestHTTPUpstreamAccountTimezonePreservesRoutingWrapper(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.CodexGatewayPin.Enabled = true
+	upstream := NewHTTPUpstreamWithAccountTimezone(cfg, nil, nil, nil)
+	routed, ok := upstream.(*astraRoutingUpstream)
+	require.True(t, ok, "timezone support must preserve the configured routing wrapper")
+	delegate, ok := routed.delegate.(*httpUpstreamService)
+	require.True(t, ok)
+	require.NotNil(t, delegate.accountTimezones)
+}
+
 func (r timezoneAccountReader) GetByID(context.Context, int64) (*service.Account, error) {
 	return r.account, nil
 }

@@ -18,9 +18,7 @@ type accountTimezoneLookup struct {
 
 // Keep the concrete transport (and its optional routing interfaces) intact.
 func NewHTTPUpstreamWithAccountTimezone(cfg *config.Config, cache service.SchedulerCache, accounts service.AccountRepository, prober service.ProxyExitInfoProber) service.HTTPUpstream {
-	s := NewHTTPUpstream(cfg).(*httpUpstreamService)
-	s.accountTimezones = &accountTimezoneLookup{cache, accounts, service.NewAccountRequestTimezoneResolver(prober)}
-	return s
+	return newHTTPUpstream(cfg, &accountTimezoneLookup{cache, accounts, service.NewAccountRequestTimezoneResolver(prober)})
 }
 
 func (s *httpUpstreamService) bindAccountTimezone(req *http.Request, accountID int64) *http.Request {

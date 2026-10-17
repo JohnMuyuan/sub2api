@@ -191,9 +191,14 @@ type httpUpstreamService struct {
 // 返回:
 //   - service.HTTPUpstream 接口实现
 func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
+	return newHTTPUpstream(cfg, nil)
+}
+
+func newHTTPUpstream(cfg *config.Config, timezones *accountTimezoneLookup) service.HTTPUpstream {
 	s := &httpUpstreamService{
-		cfg:     cfg,
-		clients: make(map[string]*upstreamClientEntry),
+		cfg:              cfg,
+		clients:          make(map[string]*upstreamClientEntry),
+		accountTimezones: timezones,
 	}
 	if cfg != nil {
 		s.upstreamRoutes, s.upstreamRoutesErr = upstreamroute.New(cfg.Gateway.UpstreamRouting)
