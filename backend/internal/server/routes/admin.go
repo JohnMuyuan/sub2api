@@ -729,6 +729,9 @@ func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAut
 	backup := admin.Group("/backups")
 	{
 		// S3 存储配置
+		backup.GET("/local-config", h.Admin.Backup.GetLocalConfig)
+		backup.PUT("/local-config", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.UpdateLocalConfig)
+		backup.GET("/:id/local-file", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.DownloadLocalBackup)
 		backup.GET("/s3-config", h.Admin.Backup.GetS3Config)
 		// 修改 S3 目标可将数据库备份外泄——要求 step-up 2FA
 		backup.PUT("/s3-config", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.UpdateS3Config)

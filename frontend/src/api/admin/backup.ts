@@ -11,6 +11,7 @@ export interface BackupS3Config {
 }
 
 export interface BackupScheduleConfig {
+  storage?: 's3' | 'local'
   enabled: boolean
   cron_expr: string
   retain_days: number
@@ -31,6 +32,8 @@ export interface BackupMonthlyArchive {
 }
 
 export interface BackupRecord {
+  storage?: 's3' | 'local'
+  local_directory?: string
   id: string
   status: 'pending' | 'running' | 'completed' | 'failed'
   backup_type: string
@@ -70,6 +73,7 @@ export interface BackupDownloadResponse {
 }
 
 export interface CreateBackupRequest {
+  storage?: 's3' | 'local'
   expire_days?: number
 }
 
@@ -182,7 +186,24 @@ export async function restoreBackup(id: string, password: string): Promise<Backu
   return data
 }
 
+export interface BackupLocalConfig { directory: string }
+export async function getLocalConfig(): Promise<BackupLocalConfig> {
+  const { data } = await apiClient.get<BackupLocalConfig>('/admin/backups/local-config')
+  return data
+}
+export async function updateLocalConfig(config: BackupLocalConfig): Promise<BackupLocalConfig> {
+  const { data } = await apiClient.put<BackupLocalConfig>('/admin/backups/local-config', config)
+  return data
+}
+export async function downloadLocalBackup(id: string): Promise<Blob> {
+  const { data } = await apiClient.get<Blob>(`/admin/backups/${id}/local-file`, { responseType: 'blob' })
+  return data
+}
+
 export const backupAPI = {
+  getLocalConfig,
+  updateLocalConfig,
+  downloadLocalBackup,
   getS3Config,
   updateS3Config,
   testS3Connection,

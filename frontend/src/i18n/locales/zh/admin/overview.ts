@@ -82,6 +82,15 @@ export default {
     },
 
     backup: {
+      local: {
+        title: '本地 ZIP 备份',
+        description: '将 PostgreSQL 数据库备份为 ZIP，保存到服务器指定目录。',
+        directory: '备份目录（绝对路径）',
+        destination: '备份存储位置',
+        dockerHint: 'Docker 部署请填写容器内路径，例如 /app/data/backups，并将它挂载到宿主机目录。该目录需要应用运行用户的写入权限。',
+        contentsHint: 'ZIP 内含 database.sql，包含数据库中的账号、设置和用量等数据。服务器环境变量、密钥文件和图片对象需要另外备份。',
+        saved: '本地备份目录已保存',
+      },
       title: '数据库备份',
       description: '全量数据库备份到 S3 兼容存储，支持定时备份与恢复',
       s3: {
