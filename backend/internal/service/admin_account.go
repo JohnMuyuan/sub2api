@@ -427,6 +427,9 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	if err := ValidateAccountRequestTimezoneExtra(accountExtra); err != nil {
+		return nil, err
+	}
 	if err := ValidateOpenAIRequestTimezoneExtra(input.Platform, accountExtra); err != nil {
 		return nil, err
 	}
@@ -649,6 +652,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		normalizedExtra, err = normalizeOpenAIAutoResetCreditExtra(account.Platform, effectiveType, account.IsShadow(), normalizedExtra)
 		if err != nil {
+			return nil, err
+		}
+		if err := ValidateAccountRequestTimezoneExtra(normalizedExtra); err != nil {
 			return nil, err
 		}
 		if err := ValidateOpenAIRequestTimezoneExtra(account.Platform, normalizedExtra); err != nil {

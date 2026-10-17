@@ -50,10 +50,13 @@ func (b *requestTimezoneBinding) enabled(ctx context.Context) bool {
 }
 
 func (s *OpenAIGatewayService) egressRequestTimezone(ctx context.Context, proxy string) string {
-	if s.requestTimezoneProber == nil || ctx.Err() != nil {
+	return s.requestTimezoneEgress.resolve(ctx, s.requestTimezoneProber, proxy)
+}
+
+func (cache *openAIRequestTimezoneEgress) resolve(ctx context.Context, prober ProxyExitInfoProber, proxy string) string {
+	if prober == nil || ctx.Err() != nil {
 		return ""
 	}
-	cache := &s.requestTimezoneEgress
 	key := sha256.Sum256([]byte(proxy))
 	lookup := func() (string, bool) {
 		cache.mu.Lock()
@@ -70,7 +73,7 @@ func (s *OpenAIGatewayService) egressRequestTimezone(ctx context.Context, proxy 
 		}
 		probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 		defer cancel()
-		info, _, err := s.requestTimezoneProber.ProbeProxy(probeCtx, proxy)
+		info, _, err := prober.ProbeProxy(probeCtx, proxy)
 		name := ""
 		ttl := 15 * time.Second
 		if err == nil && info != nil && net.ParseIP(info.IP) != nil && isAllowedOpenAIRequestTimezone(info.Timezone) {
@@ -123,6 +126,11 @@ func rewriteRequestTimezoneHeaders(headers http.Header, timezone string) {
 // proxy, including regional routing and runtime fallback. It never mutates the
 // caller's request, so retries start from the original timezone values.
 func BindOpenAIRequestTimezone(req *http.Request, proxy string) (*http.Request, error) {
+	var err error
+	req, err = BindAccountRequestTimezone(req, proxy)
+	if err != nil {
+		return nil, err
+	}
 	if req == nil {
 		return req, nil
 	}

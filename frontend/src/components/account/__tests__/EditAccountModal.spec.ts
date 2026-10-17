@@ -68,6 +68,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import EditAccountModal from '../EditAccountModal.vue'
+import OpenAIRequestTimezoneField from '../OpenAIRequestTimezoneField.vue'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -338,6 +339,30 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it.each(['auto', 'Asia/Singapore'])('persists a non-OpenAI request timezone: %s', async (timezone) => {
+    const account = buildGrokAPIKeyAccount()
+    account.extra = { request_timezone: timezone, unrelated: 'preserve' }
+    const wrapper = mountModal(account)
+    await flushPromises()
+    expect(wrapper.getComponent(OpenAIRequestTimezoneField).props('modelValue')).toBe(timezone)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock).toHaveBeenCalledWith(account.id, expect.objectContaining({
+      extra: expect.objectContaining({ request_timezone: timezone, unrelated: 'preserve' })
+    }))
+  })
+  it('clears the request timezone when preserving the original request', async () => {
+    const account = buildGrokAPIKeyAccount()
+    account.extra = { request_timezone: 'auto' }
+    const wrapper = mountModal(account)
+    await flushPromises()
+    wrapper.getComponent(OpenAIRequestTimezoneField).vm.$emit('update:modelValue', '')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock).toHaveBeenCalledWith(account.id, expect.objectContaining({
+      extra: expect.not.objectContaining({ request_timezone: expect.anything() })
+    }))
+  })
   it('round-trips OAuth alias scope and lets an operator restore a whitelist', async () => {
     const account = { ...buildAccount(), type: 'oauth', credentials: { model_mapping_mode: 'aliases', model_mapping: { 'gpt-5.4': 'gpt-5.6-sol' } } }
     const wrapper = mountModal(account); await flushPromises()

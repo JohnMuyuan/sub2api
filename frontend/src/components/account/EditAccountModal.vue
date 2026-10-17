@@ -2123,6 +2123,7 @@
       </div>
 
       <OpenAIRequestTimezoneField v-if="account?.platform === 'openai'" v-model="openAIRequestTimezone" />
+      <OpenAIRequestTimezoneField v-if="account && account.platform !== 'openai'" v-model="accountRequestTimezone" generic />
       <ExcelBPSCredentialStatus :state="account?.excel_bps_credential_state" />
 
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
@@ -4148,6 +4149,7 @@ const excelBPS403GroupOptions = computed(() => [
 ])
 const copilotSDKEnabled = ref(false)
 const openAIRequestTimezone = ref('Asia/Singapore')
+const accountRequestTimezone = ref('')
 const openaiPassthroughEnabled = ref(false)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
@@ -4679,6 +4681,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   prismBrowserEnabled.value = false
   prismBrowserModels.value = [...prismSupportedModels]
   copilotSDKEnabled.value = false
+  accountRequestTimezone.value = typeof newAccount?.extra?.request_timezone === 'string' ? newAccount.extra.request_timezone : ''
   openAIRequestTimezone.value = 'Asia/Singapore'
   openaiPassthroughEnabled.value = false
   openaiFlattenNamespacesEnabled.value = false
@@ -6609,6 +6612,10 @@ const handleSubmit = async () => {
       costExtra.cost_multiplier_auto_sync = costMultiplierAutoSync.value
     } else {
       delete costExtra.cost_multiplier_auto_sync
+    }
+    if (props.account.platform !== 'openai') {
+      if (accountRequestTimezone.value) costExtra.request_timezone = accountRequestTimezone.value
+      else delete costExtra.request_timezone
     }
     updatePayload.extra = costExtra
 

@@ -876,6 +876,9 @@ export default {
       },
       // OpenAI specific hints
       openai: {
+        requestTimezonePreserve: '保留原请求',
+        requestTimezoneAuto: '自动（按实际出口 IP）',
+        genericRequestTimezoneDesc: '支持的 JSON 对话请求中，仅改写完整 environment_context 块内已有的 timezone 、网页搜索工具已有的时区和已携带的通用时区请求头。自动模式查询实际出口 IP 的时区；查询失败保留原值。不修改普通聊天文字、服务器时区或 IP；签名请求及其他传输不适用。',
         requestTimezone: '请求时区',
         requestTimezoneDesc: '仅在系统设置中开启“请求时区绑定”后生效，未配置时使用 Asia/Singapore。',
         requestTimezoneLoadFailed: '加载时区列表失败，请稍后重试。',

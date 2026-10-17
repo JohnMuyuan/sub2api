@@ -3296,6 +3296,7 @@
       </div>
 
       <OpenAIRequestTimezoneField v-if="form.platform === 'openai'" v-model="openAIRequestTimezone" />
+      <OpenAIRequestTimezoneField v-if="form.platform !== 'openai'" v-model="accountRequestTimezone" generic />
 
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
@@ -4268,7 +4269,12 @@ const withAccountExtraSettings = (extra?: Record<string, unknown>): Record<strin
     throw new Error(t('admin.accounts.costMultiplierInvalid'))
   }
   const name = upstreamRequestIdHeader.value.trim()
-  return { ...(extra || {}), cost_multiplier: costMultiplier.value, ...(name ? { upstream_request_id_header: name } : {}) }
+  return {
+    ...(extra || {}),
+    cost_multiplier: costMultiplier.value,
+    ...(form.platform !== 'openai' && accountRequestTimezone.value ? { request_timezone: accountRequestTimezone.value } : {}),
+    ...(name ? { upstream_request_id_header: name } : {})
+  }
 }
 
 const baseUrlHint = computed(() => {
@@ -4732,6 +4738,7 @@ const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const copilotSDKEnabled = ref(false)
 const openAIRequestTimezone = ref('Asia/Singapore')
+const accountRequestTimezone = ref('')
 const openaiPassthroughEnabled = ref(false)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
@@ -5266,6 +5273,7 @@ watch(
     grokOAuthCustomBaseUrlEnabled.value = false
     grokOAuthBaseUrl.value = ''
     // Reset OAuth states
+    accountRequestTimezone.value = ''
     oauth.resetState()
     openaiOAuth.resetState()
 
@@ -5653,6 +5661,7 @@ const resetForm = () => {
   twoFABusy.value = false
   form.name = ''
   openAIRequestTimezone.value = 'Asia/Singapore'
+  accountRequestTimezone.value = ''
   form.notes = ''
   form.platform = 'anthropic'
   form.type = 'oauth'

@@ -170,6 +170,7 @@ type openAIHTTP2FallbackState struct {
 // 7. 代理变更时清空旧连接池，避免复用错误代理
 // 8. 账号并发数与连接池上限对应（账号隔离策略下）
 type httpUpstreamService struct {
+	accountTimezones  *accountTimezoneLookup
 	upstreamRoutes    *upstreamroute.Router
 	upstreamRoutesErr error
 	cfg               *config.Config                  // 全局配置
@@ -190,9 +191,14 @@ type httpUpstreamService struct {
 // 返回:
 //   - service.HTTPUpstream 接口实现
 func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
+	return newHTTPUpstream(cfg, nil)
+}
+
+func newHTTPUpstream(cfg *config.Config, timezones *accountTimezoneLookup) service.HTTPUpstream {
 	s := &httpUpstreamService{
-		cfg:     cfg,
-		clients: make(map[string]*upstreamClientEntry),
+		cfg:              cfg,
+		clients:          make(map[string]*upstreamClientEntry),
+		accountTimezones: timezones,
 	}
 	if cfg != nil {
 		s.upstreamRoutes, s.upstreamRoutesErr = upstreamroute.New(cfg.Gateway.UpstreamRouting)
@@ -220,6 +226,7 @@ func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
 //   - 调用方必须关闭 resp.Body，否则会导致 inFlight 计数泄漏
 //   - inFlight > 0 的客户端不会被淘汰，确保活跃请求不被中断
 func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	req = s.bindAccountTimezone(req, accountID)
 	if req != nil {
 		requestcapture.FromContext(req.Context()).BindAccount(accountID)
 		req = req.WithContext(requestcapture.WithAccount(req.Context(), accountID))
@@ -300,6 +307,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	if req != nil && req.URL != nil && strings.EqualFold(req.URL.Scheme, "http") {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 	}
+	req = s.bindAccountTimezone(req, accountID)
 	if req != nil {
 		requestcapture.FromContext(req.Context()).BindAccount(accountID)
 		req = req.WithContext(requestcapture.WithAccount(req.Context(), accountID))
