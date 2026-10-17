@@ -9,7 +9,7 @@
       :aria-label="t('admin.accounts.openai.requestTimezone')"
       @update:model-value="selectTimezone"
     />
-    <p class="input-hint">{{ t('admin.accounts.openai.requestTimezoneDesc') }}</p>
+    <p class="input-hint">{{ t(generic ? 'admin.accounts.openai.genericRequestTimezoneDesc' : 'admin.accounts.openai.requestTimezoneDesc') }}</p>
     <p v-if="loadFailed" class="mt-1 text-xs text-red-500">{{ t('admin.accounts.openai.requestTimezoneLoadFailed') }}</p>
   </div>
 </template>
@@ -20,10 +20,15 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import Select from '@/components/common/Select.vue'
 
-const props = defineProps<{ modelValue: string }>()
+const props = defineProps<{ modelValue: string; generic?: boolean }>()
 const emit = defineEmits<{ (event: 'update:modelValue', value: string): void }>()
 const { t } = useI18n()
-const options = ref([{ value: 'Asia/Singapore', label: 'Asia/Singapore' }])
+const specialOptions = () => props.generic ? [
+  { value: '', label: t('admin.accounts.openai.requestTimezonePreserve') },
+  { value: 'auto', label: t('admin.accounts.openai.requestTimezoneAuto') }
+] : []
+const fallback = () => props.generic ? '' : 'Asia/Singapore'
+const options = ref([...specialOptions(), { value: 'Asia/Singapore', label: 'Asia/Singapore' }])
 const loading = ref(false)
 const loadFailed = ref(false)
 const loaded = ref(false)
@@ -33,16 +38,16 @@ const selectTimezone = (value: string | number | boolean | null) => {
 }
 
 watch(() => props.modelValue, value => {
-  if (loaded.value && !options.value.some(option => option.value === value)) emit('update:modelValue', 'Asia/Singapore')
+  if (loaded.value && !options.value.some(option => option.value === value)) emit('update:modelValue', fallback())
 })
 
 onMounted(async () => {
   loading.value = true
   try {
     const result = await adminAPI.accounts.getOpenAIRequestTimezones()
-    options.value = result.timezones.map(value => ({ value, label: value }))
+    options.value = [...specialOptions(), ...result.timezones.map(value => ({ value, label: value }))]
     loaded.value = true
-    if (!result.timezones.includes(props.modelValue)) emit('update:modelValue', result.default)
+    if (!options.value.some(option => option.value === props.modelValue)) emit('update:modelValue', props.generic ? '' : result.default)
   } catch {
     loadFailed.value = true
   } finally {

@@ -97,6 +97,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import CreateAccountModal from '../CreateAccountModal.vue'
+import OpenAIRequestTimezoneField from '../OpenAIRequestTimezoneField.vue'
 import OpenAITwoFAImport from '../OpenAITwoFAImport.vue'
 
 const BaseDialogStub = defineComponent({
@@ -249,6 +250,18 @@ function expectWSAcceleration(extra: unknown, enabled: boolean) {
 }
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
+  it('creates an Anthropic account with automatic request timezone', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Timezone account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    wrapper.getComponent(OpenAIRequestTimezoneField).vm.$emit('update:modelValue', 'auto')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({
+      platform: 'anthropic', extra: expect.objectContaining({ request_timezone: 'auto' })
+    }))
+  })
   it('offers WS SSE acceleration for OpenAI OAuth even while WS mode is off', async () => {
     const wrapper = mountModal()
     expect(wrapper.find('[data-testid="create-openai-ws-sse-acceleration"]').exists()).toBe(false)

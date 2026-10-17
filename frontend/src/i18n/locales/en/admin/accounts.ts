@@ -758,6 +758,9 @@ export default {
       },
       // OpenAI specific hints
       openai: {
+        requestTimezonePreserve: 'Preserve request',
+        requestTimezoneAuto: 'Automatic (actual egress IP)',
+        genericRequestTimezoneDesc: 'For supported JSON conversation requests, rewrites existing timezone values in complete environment_context blocks, existing web search timezone fields and generic timezone headers. Automatic mode resolves the actual egress IP; probe failures preserve original values. Ordinary prose, server timezone and IP are unchanged. Signed requests and other transports are excluded.',
         requestTimezone: 'Request timezone',
         requestTimezoneDesc: 'Applies when Bind request timezone is enabled in system settings. Defaults to Asia/Singapore.',
         requestTimezoneLoadFailed: 'Could not load timezones. Please retry later.',
