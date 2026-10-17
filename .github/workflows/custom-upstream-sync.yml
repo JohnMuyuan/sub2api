@@ -1,0 +1,83 @@
+name: Custom upstream sync
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: custom-upstream-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.merge.outputs.changed }}
+      sha: ${{ steps.merge.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: custom
+          fetch-depth: 0
+      - name: Merge upstream into the automation branch
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add upstream https://github.com/ranxi2001/sub2api.git
+          git fetch upstream production
+          if git merge-base --is-ancestor upstream/production HEAD; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'No upstream changes.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          previous=$(git ls-remote origin refs/heads/sync/upstream | cut -f1)
+          git switch -c sync/upstream
+          if ! git merge --no-edit upstream/production; then
+            echo 'Upstream merge has conflicts. The custom branch was not changed. Resolve locally before retrying.' >> "$GITHUB_STEP_SUMMARY"
+            git diff --name-only --diff-filter=U >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          git push --force-with-lease="refs/heads/sync/upstream:$previous" origin HEAD:refs/heads/sync/upstream
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  validate:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    uses: ./.github/workflows/custom-build.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+  propose:
+    needs: [prepare, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Create or reuse the update pull request
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing=$(gh pr list --base custom --head sync/upstream --state open --json url --jq '.[0].url // empty')
+          if [ -n "$existing" ]; then
+            echo "$existing" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/upstream-pr.md" <<'BODY'
+          Merge ranxi2001/sub2api's production branch into custom, retaining local features.
+
+          Validation: the Custom upstream sync workflow built the proposed commit with the project's Dockerfile (frontend checks/build and Go compilation). This is not a full unit or integration test run. Check that workflow's latest result before merging; GITHUB_TOKEN-created PRs do not automatically trigger the inherited PR workflows.
+
+          After review and merge, run Custom build with publish enabled to produce the custom image. Deployment is a separate step.
+          BODY
+          gh pr create --base custom --head sync/upstream --title 'chore: sync upstream production' --body-file "$RUNNER_TEMP/upstream-pr.md" >> "$GITHUB_STEP_SUMMARY"
