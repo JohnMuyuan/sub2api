@@ -26,7 +26,7 @@ func TestAccountViewerJWTEnforcesReadOnlyCapabilitiesAndFreshGrants(t *testing.T
 	r.Use(gin.HandlerFunc(NewAdminAuthMiddleware(auth, service.NewUserService(repo, nil, nil, nil), nil, nil)))
 	var grants []int64
 	handler := func(c *gin.Context) { grants, _ = service.ObserverGroupIDs(c.Request.Context()); c.Status(204) }
-	for _, route := range []struct{ method, path string }{{"GET", "/api/v1/admin/account-viewer/accounts"}, {"GET", "/api/v1/admin/account-viewer/accounts/:id/stats"}, {"GET", "/api/v1/admin/accounts"}, {"GET", "/api/v1/admin/accounts/data"}, {"GET", "/api/v1/admin/accounts/:id/export-session/:task_id"}, {"GET", "/api/v1/admin/proxies/all"}, {"PUT", "/api/v1/admin/accounts/:id"}, {"DELETE", "/api/v1/admin/accounts/:id"}, {"POST", "/api/v1/admin/accounts/:id/test"}, {"POST", "/api/v1/admin/accounts/:id/refresh"}, {"POST", "/api/v1/admin/accounts/bulk-update"}} {
+	for _, route := range []struct{ method, path string }{{"GET", "/api/v1/admin/account-viewer/accounts"}, {"GET", "/api/v1/admin/account-viewer/accounts/:id/stats"}, {"GET", "/api/v1/admin/accounts"}, {"GET", "/api/v1/admin/accounts/data"}, {"GET", "/api/v1/admin/accounts/:id/export-session/:task_id"}, {"GET", "/api/v1/admin/settings/system-timezone"}, {"PUT", "/api/v1/admin/settings/system-timezone"}, {"GET", "/api/v1/admin/proxies/all"}, {"PUT", "/api/v1/admin/accounts/:id"}, {"DELETE", "/api/v1/admin/accounts/:id"}, {"POST", "/api/v1/admin/accounts/:id/test"}, {"POST", "/api/v1/admin/accounts/:id/refresh"}, {"POST", "/api/v1/admin/accounts/bulk-update"}} {
 		r.Handle(route.method, route.path, handler)
 	}
 	call := func(method, path string) int {
@@ -39,7 +39,7 @@ func TestAccountViewerJWTEnforcesReadOnlyCapabilitiesAndFreshGrants(t *testing.T
 	require.Equal(t, 204, call("GET", "/api/v1/admin/account-viewer/accounts"))
 	require.Equal(t, []int64{7}, grants)
 	require.Equal(t, 204, call("GET", "/api/v1/admin/account-viewer/accounts/1/stats"))
-	for _, route := range []struct{ method, path string }{{"GET", "/api/v1/admin/accounts"}, {"GET", "/api/v1/admin/accounts/data"}, {"GET", "/api/v1/admin/accounts/1/export-session/task"}, {"GET", "/api/v1/admin/proxies/all"}, {"PUT", "/api/v1/admin/accounts/1"}, {"DELETE", "/api/v1/admin/accounts/1"}, {"POST", "/api/v1/admin/accounts/1/test"}, {"POST", "/api/v1/admin/accounts/1/refresh"}, {"POST", "/api/v1/admin/accounts/bulk-update"}} {
+	for _, route := range []struct{ method, path string }{{"GET", "/api/v1/admin/accounts"}, {"GET", "/api/v1/admin/accounts/data"}, {"GET", "/api/v1/admin/accounts/1/export-session/task"}, {"GET", "/api/v1/admin/settings/system-timezone"}, {"PUT", "/api/v1/admin/settings/system-timezone"}, {"GET", "/api/v1/admin/proxies/all"}, {"PUT", "/api/v1/admin/accounts/1"}, {"DELETE", "/api/v1/admin/accounts/1"}, {"POST", "/api/v1/admin/accounts/1/test"}, {"POST", "/api/v1/admin/accounts/1/refresh"}, {"POST", "/api/v1/admin/accounts/bulk-update"}} {
 		require.Equal(t, http.StatusForbidden, call(route.method, route.path), route.path)
 	}
 	user.ObserverGroupIDs = []int64{9}

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -546,8 +547,8 @@ func TestComputeQuotaResetAt_DefaultTimezone(t *testing.T) {
 
 	resetAt, err := time.Parse(time.RFC3339, resetAtStr)
 	require.NoError(t, err)
-	// Default timezone is UTC
-	assert.Equal(t, 12, resetAt.UTC().Hour())
+	// Omitted account timezone follows the effective site clock.
+	assert.Equal(t, 12, resetAt.In(timezone.Location()).Hour())
 }
 
 func TestComputeQuotaResetAt_InvalidHour_ClampedToZero(t *testing.T) {
@@ -564,4 +565,20 @@ func TestComputeQuotaResetAt_InvalidHour_ClampedToZero(t *testing.T) {
 	require.NoError(t, err)
 	// Invalid hour → clamped to 0
 	assert.Equal(t, 0, resetAt.UTC().Hour())
+}
+
+func TestSystemTimezoneAccountQuotaDefaultAndExplicitOverride(t *testing.T) {
+	account := &Account{Extra: map[string]any{}}
+	require.Equal(t, timezone.Name(), account.GetQuotaResetTimezone())
+	account.Extra["quota_reset_timezone"] = "UTC"
+	require.Equal(t, "UTC", account.GetQuotaResetTimezone())
+	extra := map[string]any{"quota_daily_reset_mode": "fixed", "quota_daily_reset_hour": float64(9), "quota_weekly_reset_mode": "fixed", "quota_weekly_reset_hour": float64(10), "quota_weekly_reset_day": float64(1)}
+	ComputeQuotaResetAt(extra)
+	daily, err := time.Parse(time.RFC3339, extra["quota_daily_reset_at"].(string))
+	require.NoError(t, err)
+	weekly, err := time.Parse(time.RFC3339, extra["quota_weekly_reset_at"].(string))
+	require.NoError(t, err)
+	require.Equal(t, 9, daily.In(timezone.Location()).Hour())
+	require.Equal(t, 10, weekly.In(timezone.Location()).Hour())
+	require.Equal(t, time.Monday, weekly.In(timezone.Location()).Weekday())
 }

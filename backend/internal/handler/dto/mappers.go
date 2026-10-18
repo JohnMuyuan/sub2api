@@ -3,6 +3,7 @@ package dto
 
 import (
 	"context"
+	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -393,11 +394,16 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 			tz := a.GetQuotaResetTimezone()
 			out.QuotaResetTimezone = &tz
 		}
-		if a.Extra != nil {
-			if v, ok := a.Extra["quota_daily_reset_at"].(string); ok && v != "" {
+		quotaExtra := a.Extra
+		if zone, _ := a.Extra["quota_reset_timezone"].(string); zone == "" && a.Extra != nil {
+			quotaExtra = maps.Clone(a.Extra)
+			service.ComputeQuotaResetAt(quotaExtra)
+		}
+		if quotaExtra != nil {
+			if v, ok := quotaExtra["quota_daily_reset_at"].(string); ok && v != "" {
 				out.QuotaDailyResetAt = &v
 			}
-			if v, ok := a.Extra["quota_weekly_reset_at"].(string); ok && v != "" {
+			if v, ok := quotaExtra["quota_weekly_reset_at"].(string); ok && v != "" {
 				out.QuotaWeeklyResetAt = &v
 			}
 		}

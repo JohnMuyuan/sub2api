@@ -1,5 +1,6 @@
 <template>
   <AppLayout>
+    <p class="mb-3 text-xs text-gray-500">{{ t('common.displayTimezone', { timezone: getSiteTimeZone() }) }}</p>
     <div class="space-y-6">
       <div><h1 class="text-2xl font-semibold">{{ t('accountViewer.title') }}</h1><p class="mt-1 text-sm text-gray-500">{{ t('accountViewer.description') }}</p></div>
       <form class="card flex flex-wrap gap-3 p-4" @submit.prevent="page = 1; loadAccounts()">
@@ -46,9 +47,11 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import { formatDateTime } from '@/utils/format'
 import { accountViewerAPI, type ViewerAccount, type ViewerStats } from '@/api/accountViewer'
 const { t } = useI18n()
 const accounts = ref<ViewerAccount[]>([])
@@ -56,7 +59,7 @@ const loading = ref(false), error = ref(''), page = ref(1), pages = ref(0), tota
 const selected = ref<ViewerAccount | null>(null), stats = ref<ViewerStats | null>(null)
 const days = ref(30), statsLoading = ref(false), statsError = ref('')
 let listController: AbortController | undefined, statsController: AbortController | undefined
-function dateTime(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString() }
+function dateTime(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? '—' : formatDateTime(date) }
 function statusLabel(account: ViewerAccount) {
   if (account.status === 'disabled') return t('accountViewer.disabled')
   if (account.status !== 'active') return t('accountViewer.accountError')

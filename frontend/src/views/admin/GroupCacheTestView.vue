@@ -85,6 +85,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -118,7 +119,7 @@ const number = (n: number | null | undefined) => n == null ? '—' : n.toLocaleS
 const percent = (n: number | null) => n == null ? '—' : (n * 100).toFixed(1) + '%'
 const money = (n: number | null | undefined) => n == null ? '—' : '$' + n.toFixed(6)
 const ms = (n: number | null | undefined) => n == null ? '—' : (n / 1000).toFixed(2) + ' s'
-const date = (value: string) => new Date(value).toLocaleString()
+const date = (value: string) => new Date(value).toLocaleString(undefined, { timeZone: getSiteTimeZone() })
 function runConfiguration(run: CacheTestRun) {
   const s = run.settings
   return t('admin.groupCacheTest.runConfig', { blocks: s.prefixBlocks, output: s.maxOutputTokens, interval: s.intervalMs, tier: s.serviceTier || t('admin.groupCacheTest.unspecified'), reasoning: s.reasoningEffort || t('admin.groupCacheTest.unspecified') })

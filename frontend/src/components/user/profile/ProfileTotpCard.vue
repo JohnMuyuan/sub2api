@@ -101,6 +101,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { totpAPI } from '@/api'
@@ -140,6 +141,7 @@ const formatDate = (timestamp: number) => {
   // Backend returns Unix timestamp in seconds, convert to milliseconds
   const date = new Date(timestamp * 1000)
   return date.toLocaleDateString(undefined, {
+    timeZone: getSiteTimeZone(),
     year: 'numeric',
     month: 'long',
     day: 'numeric',

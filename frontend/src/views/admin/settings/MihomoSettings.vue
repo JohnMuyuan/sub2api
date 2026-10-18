@@ -52,7 +52,7 @@
         <template #cell-label="{ row }"><span class="font-medium">{{ row.label }}</span><code class="ml-2 text-xs text-gray-400">{{ row.id.slice(0, 8) }}</code></template>
         <template #cell-enabled="{ row }"><span class="badge" :class="row.enabled ? 'badge-success' : 'badge-gray'">{{ row.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</span></template>
         <template #cell-nodes="{ row }">{{ row.cached ? row.nodes : text('待更新', 'Not refreshed') }}</template>
-        <template #cell-updated_at="{ row }">{{ row.updated_at ? new Date(row.updated_at).toLocaleString() : '—' }}</template>
+        <template #cell-updated_at="{ row }">{{ row.updated_at ? new Date(row.updated_at).toLocaleString(undefined, { timeZone: getSiteTimeZone() }) : '—' }}</template>
         <template #cell-actions="{ row }">
           <div class="flex flex-wrap gap-2">
             <button type="button" class="btn btn-secondary btn-sm" :disabled="busy || !row.enabled" @click="operate('subscription_refresh/' + row.id)">{{ text('更新', 'Refresh') }}</button>
@@ -188,6 +188,7 @@ http://username:password@hostname:port</pre></details>
   </div>
 </template>
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, ref, onMounted, onUnmounted, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { apiClient } from '@/api/client'
@@ -347,7 +348,7 @@ async function applyNodeEdit() {
 }
 const checkExit = (check: NodeCheck) => [check.ip_address, check.country, check.city].filter(Boolean).join(' · ')
 function checkTitle(node: ManagedNode) {
-  const checked = node.check ? text('检测时间 ', 'Checked ') + new Date(node.check.checked_at * 1000).toLocaleString() : ''
+  const checked = node.check ? text('检测时间 ', 'Checked ') + new Date(node.check.checked_at * 1000).toLocaleString(undefined, { timeZone: getSiteTimeZone() }) : ''
   return node.dynamic ? checked + text('；动态代理每次连接可能更换出口', '; dynamic proxies may change exit on every connection') : checked
 }
 const nodeCheckPath = (name: string, check: 'test' | 'quality-check') => `/admin/system/mihomo/nodes/${encodeURIComponent(name)}/${check}`

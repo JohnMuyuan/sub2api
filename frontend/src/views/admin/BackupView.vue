@@ -457,6 +457,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api'
@@ -1043,7 +1044,7 @@ function formatDate(value?: string): string {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
+  return date.toLocaleString(undefined, { timeZone: getSiteTimeZone() })
 }
 
 onMounted(async () => {

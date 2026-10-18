@@ -222,6 +222,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
@@ -392,9 +393,9 @@ function modelCooldownLabel(model: string) {
   return t('qualityOps.cooldownNotRecorded')
 }
 function name(plan: ScheduledTestPlan) { return plan.account_name || accountNames.value[plan.account_id] || `#${plan.account_id ?? plan.id}` }
-function date(value: string | null | undefined) { return value ? new Date(value).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—' }
-function clock(value: string | number | undefined) { return value ? new Date(value).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '—' }
-function day(value: string | undefined) { return value ? new Date(value).toLocaleDateString() : '—' }
+function date(value: string | null | undefined) { return value ? new Date(value).toLocaleString(undefined, { timeZone: getSiteTimeZone(), month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—' }
+function clock(value: string | number | undefined) { return value ? new Date(value).toLocaleTimeString(undefined, { timeZone: getSiteTimeZone(), hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '—' }
+function day(value: string | undefined) { return value ? (/^\d{4}-\d{2}-\d{2}$/.test(value) ? value : new Date(value).toLocaleDateString(undefined, { timeZone: getSiteTimeZone() })) : '—' }
 function running(plan: ScheduledTestPlan) { return !!plan.running_until && Date.parse(plan.running_until) > Date.now() }
 function allPassed(op: QualityOperation) { return op.total_count > 0 && op.passed_count === op.total_count }
 function bpsTrigger(policy?: QualityBPSPolicy) {

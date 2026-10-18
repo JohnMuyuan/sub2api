@@ -1,5 +1,18 @@
 export default {
     settings: {
+      systemTimezone: {
+        title: '全站时区',
+        description: '用于系统日历日/周额度边界、统计日期和使用记录显示。保存后重启应用容器并刷新页面生效，历史请求的实际时间保持不变。订阅的滚动 7 天/30 天周期、上游额度重置时刻和单独配置的账号时区仍遵循各自规则。',
+        effective: '当前生效：{timezone}',
+        label: 'IANA 时区',
+        fallback: '留空跟随启动配置（当前为 {timezone}）。可填写 Asia/Taipei、UTC 等有效 IANA 名称。',
+        pending: '已保存待生效：请重启应用容器，然后刷新页面。',
+        save: '单独保存全站时区',
+        retry: '重新加载时区设置',
+        saved: '时区设置已保存',
+        error: '时区设置失败，请检查时区名称或重试',
+      },
+
       title: '系统设置',
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
       tabs: {

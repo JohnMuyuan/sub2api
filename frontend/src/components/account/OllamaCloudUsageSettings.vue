@@ -136,6 +136,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
@@ -176,7 +177,7 @@ const formatPercent = (value?: number) => typeof value === 'number' && Number.is
 const formatDate = (value?: string) => {
   if (!value) return '-'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(undefined, { timeZone: getSiteTimeZone() })
 }
 const windowSummary = (window?: OllamaCloudUsageWindow) => {
   if (!window) return '-'

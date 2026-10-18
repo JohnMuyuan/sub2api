@@ -2731,9 +2731,9 @@
             <span v-else class="text-gray-500">{{ t('admin.accounts.openai.codexTurnTicketMissing') }}</span>
             <div v-if="ticket.probe" class="ml-2 text-xs text-gray-500">
               {{ t('admin.accounts.openai.ticketProbe.' + ticket.probe.result) }} · HTTP {{ ticket.probe.http_status || '—' }}
-              <div>{{ new Date(ticket.probe.checked_at).toLocaleString() }}</div>
-              <div v-if="ticket.probe.next_probe_at">{{ t('admin.accounts.openai.ticketProbeNext') }} {{ new Date(ticket.probe.next_probe_at).toLocaleString() }}</div>
-              <div v-if="ticket.standby_expires_at">{{ t('admin.accounts.openai.ticketStandbyExpires') }} {{ new Date(ticket.standby_expires_at).toLocaleString() }}</div>
+              <div>{{ new Date(ticket.probe.checked_at).toLocaleString(undefined, { timeZone: getSiteTimeZone() }) }}</div>
+              <div v-if="ticket.probe.next_probe_at">{{ t('admin.accounts.openai.ticketProbeNext') }} {{ new Date(ticket.probe.next_probe_at).toLocaleString(undefined, { timeZone: getSiteTimeZone() }) }}</div>
+              <div v-if="ticket.standby_expires_at">{{ t('admin.accounts.openai.ticketStandbyExpires') }} {{ new Date(ticket.standby_expires_at).toLocaleString(undefined, { timeZone: getSiteTimeZone() }) }}</div>
             </div>
           </div>
         </div>
@@ -3431,6 +3431,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import OpenAIRequestTimezoneField from '@/components/account/OpenAIRequestTimezoneField.vue'
 import ExcelBPSCredentialStatus from './ExcelBPSCredentialStatus.vue'
 import { DEFAULT_ACCOUNT_COST_MULTIPLIER, isValidAccountCostMultiplier, readAccountCostMultiplier } from '@/utils/accountCost'
@@ -3655,7 +3656,7 @@ const opencodeGoFormatPercent = (value?: number) => typeof value === 'number' &&
 const opencodeGoFormatDate = (value?: string) => {
   if (!value) return '-'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(undefined, { timeZone: getSiteTimeZone() })
 }
 const opencodeGoWindowSummary = (window?: OpenCodeGoUsageWindow) => {
   if (!window) return '-'
@@ -6573,7 +6574,8 @@ const handleSubmit = async () => {
         delete newExtra.quota_weekly_reset_hour
       }
       if (editDailyResetMode.value === 'fixed' || editWeeklyResetMode.value === 'fixed') {
-        newExtra.quota_reset_timezone = editResetTimezone.value || 'UTC'
+        if (editResetTimezone.value) newExtra.quota_reset_timezone = editResetTimezone.value
+        else delete newExtra.quota_reset_timezone
       } else {
         delete newExtra.quota_reset_timezone
       }

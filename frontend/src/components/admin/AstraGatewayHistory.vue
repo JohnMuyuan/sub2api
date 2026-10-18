@@ -20,6 +20,7 @@
   </section>
 </template>
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getAstraGatewayHistory, type AstraGatewayHistoryPage } from '@/api/admin/astraGateway'
@@ -28,7 +29,7 @@ const p = 'admin.astraGateway'
 const host = ref(''), passed = ref(true), page = ref(1), loading = ref(false), error = ref(false)
 const data = ref<AstraGatewayHistoryPage>({ items: [], total: 0, unique_gateways: 0 })
 let request = 0, alive = true, timer: ReturnType<typeof setInterval> | undefined
-function clock(value?: string) { return value ? new Date(value).toLocaleString() : '—' }
+function clock(value?: string) { return value ? new Date(value).toLocaleString(undefined, { timeZone: getSiteTimeZone() }) : '—' }
 function reason(code: string) { const key = `${p}.reasons.${code}`; return te(key) ? t(key) : code }
 async function refresh() {
   const current = ++request

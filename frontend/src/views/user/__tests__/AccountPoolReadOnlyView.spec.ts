@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import AccountPoolReadOnlyView from '../AccountPoolReadOnlyView.vue'
 const { list, stats } = vi.hoisted(() => ({ list: vi.fn(), stats: vi.fn() }))
 vi.mock('@/api/accountViewer', () => ({ accountViewerAPI: { list, stats } }))
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('vue-i18n', async (importOriginal) => ({ ...await importOriginal<typeof import('vue-i18n')>(), useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<main><slot /></main>' } }))
 
 const account = (id: number) => ({ id, name: `*** #${id}`, platform: 'anthropic', type: 'oauth', status: 'active', schedulable: true, groups: [{ id: 10, name: 'Allowed pool' }], usage_windows: [] })

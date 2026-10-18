@@ -6495,6 +6495,7 @@
               </p>
             </div>
             <div class="space-y-6 p-6">
+              <SystemTimezoneSettings />
               <!-- Backend Mode -->
               <div
                 class="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
@@ -9416,6 +9417,7 @@ import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
 import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vue";
 import GroupBadge from "@/components/common/GroupBadge.vue";
 import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
+import SystemTimezoneSettings from "@/components/settings/SystemTimezoneSettings.vue";
 import RequestTimezoneSettings from "@/components/settings/RequestTimezoneSettings.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";

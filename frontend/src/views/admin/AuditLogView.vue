@@ -352,6 +352,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI, type AuditLog } from '@/api/admin'
@@ -661,7 +662,7 @@ async function submitClear() {
 function formatTime(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString()
+  return d.toLocaleString(undefined, { timeZone: getSiteTimeZone() })
 }
 
 function statusText(status: number): string {

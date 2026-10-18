@@ -16,6 +16,7 @@
   </BaseDialog>
 </template>
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -38,7 +39,7 @@ watch(() => [props.show, props.account?.account_id] as const, () => {
 }, { immediate: true, flush: 'pre' })
 const close = () => { sequence++; busy.value = false; emit('close') }
 onBeforeUnmount(() => { sequence++ })
-const date = (s: string) => { const d = new Date(s); return Number.isFinite(d.getTime()) ? d.toLocaleString() : '-' }
+const date = (s: string) => { const d = new Date(s); return Number.isFinite(d.getTime()) ? d.toLocaleString(undefined, { timeZone: getSiteTimeZone() }) : '-' }
 async function save() {
   if (!props.account || busy.value) return
   const value = Number(threshold.value)

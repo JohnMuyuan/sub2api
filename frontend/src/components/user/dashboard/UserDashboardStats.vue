@@ -225,6 +225,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
@@ -377,6 +378,7 @@ function formatResetTime(iso: string | null | undefined): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleString(undefined, {
+    timeZone: getSiteTimeZone(),
     month: 'numeric',
     day: 'numeric',
     hour: '2-digit',

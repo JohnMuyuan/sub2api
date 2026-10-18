@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
@@ -2966,12 +2967,12 @@ func (a *Account) GetQuotaWeeklyResetHour() int {
 	return a.getExtraInt("quota_weekly_reset_hour")
 }
 
-// GetQuotaResetTimezone 获取固定重置的时区名（IANA），默认 "UTC"
+// GetQuotaResetTimezone 获取固定重置的时区名（IANA），留空跟随全站时区。
 func (a *Account) GetQuotaResetTimezone() string {
 	if tz := a.getExtraString("quota_reset_timezone"); tz != "" {
 		return tz
 	}
-	return "UTC"
+	return timezone.Name()
 }
 
 // --- Quota Notification Getters ---
@@ -3109,7 +3110,7 @@ func ComputeQuotaResetAt(extra map[string]any) {
 	now := time.Now()
 	tzName, _ := extra["quota_reset_timezone"].(string)
 	if tzName == "" {
-		tzName = "UTC"
+		tzName = timezone.Name()
 	}
 	tz, err := time.LoadLocation(tzName)
 	if err != nil {
@@ -3161,7 +3162,7 @@ func NormalizeFixedQuotaWindows(extra map[string]any) {
 	now := time.Now()
 	tzName, _ := extra["quota_reset_timezone"].(string)
 	if tzName == "" {
-		tzName = "UTC"
+		tzName = timezone.Name()
 	}
 	tz, err := time.LoadLocation(tzName)
 	if err != nil {

@@ -4,6 +4,7 @@
  */
 
 import { i18n, getLocale } from '@/i18n'
+import { getSiteTimeZone, formatSiteDateInput } from '@/utils/siteTimezone'
 
 /**
  * 格式化相对时间
@@ -118,7 +119,9 @@ export function formatDate(
   if (isNaN(d.getTime())) return ''
 
   const locale = localeOverride ?? getLocale()
-  return new Intl.DateTimeFormat(locale, options).format(d)
+  // YYYY-MM-DD is a calendar label, not an instant at UTC midnight.
+  const calendarOnly = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+  return new Intl.DateTimeFormat(locale, { timeZone: calendarOnly ? 'UTC' : getSiteTimeZone(), ...options }).format(d)
 }
 
 /**
@@ -171,14 +174,10 @@ export function formatDateTimeToMinute(
 }
 
 /**
- * 格式化为 date 控件值（YYYY-MM-DD，使用本地时间）
+ * 格式化为 date 控件值（YYYY-MM-DD，使用全站生效时区）
  */
 export function formatDateLocalInput(date: Date): string {
-  if (isNaN(date.getTime())) return ''
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return formatSiteDateInput(date)
 }
 
 /**

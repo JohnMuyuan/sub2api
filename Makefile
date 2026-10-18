@@ -1,6 +1,11 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/components/account/__tests__/QuotaDimensionRow.siteTimezone.spec.ts \
+	src/components/common/__tests__/DateRangePicker.siteTimezone.spec.ts \
+	src/utils/__tests__/siteTimezone.spec.ts \
+	src/utils/__tests__/formatDateLocalInput.spec.ts \
+	src/components/settings/SystemTimezoneSettings.spec.ts \
 	src/views/user/__tests__/AccountPoolReadOnlyView.spec.ts \
 	src/stores/__tests__/auth.spec.ts \
 	src/components/admin/account/__tests__/OpenAISessionExportDialog.spec.ts \

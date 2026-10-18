@@ -1,5 +1,18 @@
 export default {
     settings: {
+      systemTimezone: {
+        title: 'Site timezone',
+        description: 'Controls system calendar quota boundaries, statistics dates and usage timestamps. Restart the application container and reload the page after saving. Historical instants remain unchanged. Rolling subscription periods, upstream resets and explicit account timezones retain their own rules.',
+        effective: 'Currently effective: {timezone}',
+        label: 'IANA timezone',
+        fallback: 'Leave blank to follow startup configuration (currently {timezone}). Enter a valid IANA name, such as Asia/Taipei or UTC.',
+        pending: 'Saved, pending restart. Restart the application container and reload this page.',
+        save: 'Save site timezone separately',
+        retry: 'Reload timezone settings',
+        saved: 'Timezone setting saved',
+        error: 'Unable to save or load the timezone. Check the name and retry.',
+      },
+
       title: 'System Settings',
       description: 'Manage registration, email verification, default values, and SMTP settings',
       tabs: {

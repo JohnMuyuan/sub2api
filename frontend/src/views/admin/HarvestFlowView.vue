@@ -235,6 +235,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import HarvestCoverageCard from '@/components/admin/HarvestCoverageCard.vue'
 import HarvestAccountCoverage from '@/components/admin/HarvestAccountCoverage.vue'
 import HarvestPolicyPanel from '@/components/admin/HarvestPolicyPanel.vue'
@@ -441,7 +442,7 @@ function formatClock(value?: string) {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleTimeString()
+  return date.toLocaleTimeString(undefined, { timeZone: getSiteTimeZone() })
 }
 
 function recoverText(account: CodexHarvestFlowAccount) {
@@ -521,7 +522,7 @@ async function fetchFlow() {
     if (disposed || requestID !== flowRequestID) return
     snapshot.value = data
     nowMs.value = Date.now()
-    lastUpdated.value = new Date().toLocaleTimeString()
+    lastUpdated.value = new Date().toLocaleTimeString(undefined, { timeZone: getSiteTimeZone() })
   } catch (error) {
     if (disposed || requestID !== flowRequestID) return
     const err = error as { message?: string }

@@ -417,6 +417,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
@@ -869,16 +870,10 @@ function formatDate(iso: string | null | undefined): string {
   if (!iso) return '-'
   const d = new Date(iso)
   const loc = locale.value === 'zh' ? 'zh-CN' : 'en-US'
-  return d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' })
+  return d.toLocaleDateString(loc, { timeZone: getSiteTimeZone(), year: 'numeric', month: 'long', day: 'numeric' })
 }
 
-function getBrowserTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-  } catch {
-    return 'UTC'
-  }
-}
+function getBrowserTimezone(): string { return getSiteTimeZone() }
 
 // ==================== API Query ====================
 

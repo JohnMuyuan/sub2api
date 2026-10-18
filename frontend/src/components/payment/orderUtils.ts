@@ -1,3 +1,4 @@
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 /**
  * Shared utility functions for payment order display.
  * Used by AdminOrderDetail, AdminOrderTable, AdminRefundDialog, AdminOrdersView, etc.
@@ -31,5 +32,5 @@ export function canRefund(status: string): boolean {
 
 export function formatOrderDateTime(dateStr: string): string {
   if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString()
+  return new Date(dateStr).toLocaleString(undefined, { timeZone: getSiteTimeZone() })
 }
