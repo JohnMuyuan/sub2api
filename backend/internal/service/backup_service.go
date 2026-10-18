@@ -137,6 +137,7 @@ type BackupRecord struct {
 	ExpiresAt        string                `json:"expires_at,omitempty"`     // 过期时间
 	Progress         string                `json:"progress,omitempty"`       // "dumping", "uploading", ""
 	RestoreStatus    string                `json:"restore_status,omitempty"` // "", "running", "completed", "failed"
+	Portable         bool                  `json:"portable,omitempty"`
 	RestoreStartedAt string                `json:"restore_started_at,omitempty"`
 	RestoreError     string                `json:"restore_error,omitempty"`
 	RestoredAt       string                `json:"restored_at,omitempty"`

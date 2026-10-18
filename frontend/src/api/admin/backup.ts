@@ -48,6 +48,7 @@ export interface BackupRecord {
   expires_at?: string
   progress?: string
   restore_status?: string
+  portable?: boolean
   restore_started_at?: string
   restore_error?: string
   restored_at?: string
@@ -186,6 +187,16 @@ export async function restoreBackup(id: string, password: string): Promise<Backu
   return data
 }
 
+export async function importLocalBackup(file: File): Promise<BackupRecord> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await apiClient.post<BackupRecord>('/admin/backups/import', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30 * 60 * 1000,
+  })
+  return data
+}
+
 export interface BackupLocalConfig { directory: string }
 export async function getLocalConfig(): Promise<BackupLocalConfig> {
   const { data } = await apiClient.get<BackupLocalConfig>('/admin/backups/local-config')
@@ -201,6 +212,7 @@ export async function downloadLocalBackup(id: string): Promise<Blob> {
 }
 
 export const backupAPI = {
+  importLocalBackup,
   getLocalConfig,
   updateLocalConfig,
   downloadLocalBackup,

@@ -18,6 +18,7 @@ import (
 
 const (
 	securitySecretKeyJWT        = "jwt_secret"
+	securitySecretKeyTOTP       = "totp_encryption_key"
 	securitySecretReadRetryMax  = 5
 	securitySecretReadRetryWait = 10 * time.Millisecond
 )
@@ -25,6 +26,38 @@ const (
 var readRandomBytes = rand.Read
 
 func ensureBootstrapSecrets(ctx context.Context, client *ent.Client, cfg *config.Config) error {
+	if err := ensureJWTBootstrapSecret(ctx, client, cfg); err != nil {
+		return err
+	}
+	key := strings.TrimSpace(cfg.Totp.EncryptionKey)
+	if key == "" {
+		var err error
+		key, err = generateHexSecret(32)
+		if err != nil {
+			return err
+		}
+	}
+	decoded, err := hex.DecodeString(key)
+	if err != nil || len(decoded) != 32 {
+		return fmt.Errorf("configured TOTP encryption key must be 32 bytes of hex")
+	}
+	stored, err := createSecuritySecretIfAbsent(ctx, client, securitySecretKeyTOTP, key)
+	if err != nil {
+		return fmt.Errorf("persist TOTP encryption key: %w", err)
+	}
+	decoded, err = hex.DecodeString(stored)
+	if err != nil || len(decoded) != 32 {
+		return fmt.Errorf("persisted TOTP encryption key must be 32 bytes of hex")
+	}
+	if stored != key {
+		log.Println("Configured TOTP key differs from persisted key; using the database key for restored data and cross-instance consistency.")
+	}
+	cfg.Totp.EncryptionKey = stored
+	cfg.Totp.EncryptionKeyConfigured = true
+	return nil
+}
+
+func ensureJWTBootstrapSecret(ctx context.Context, client *ent.Client, cfg *config.Config) error {
 	if client == nil {
 		return fmt.Errorf("nil ent client")
 	}

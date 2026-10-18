@@ -50,6 +50,31 @@ func TestEnsureBootstrapSecretsNilInputs(t *testing.T) {
 	require.Contains(t, err.Error(), "nil config")
 }
 
+func TestEnsureBootstrapSecretsPortableEncryptionKey(t *testing.T) {
+	client := newSecuritySecretTestClient(t)
+	original := &config.Config{Totp: config.TotpConfig{EncryptionKey: strings.Repeat("ab", 32)}}
+	require.NoError(t, ensureBootstrapSecrets(t.Context(), client, original))
+	encryptor, err := NewAESEncryptor(original)
+	require.NoError(t, err)
+	ciphertext, err := encryptor.Encrypt("restored-secret")
+	require.NoError(t, err)
+	// A new deployment has a different configured key. The restored database's
+	// persisted key must win, just as the persisted JWT secret already does.
+	restored := &config.Config{Totp: config.TotpConfig{EncryptionKey: strings.Repeat("cd", 32)}}
+	require.NoError(t, ensureBootstrapSecrets(t.Context(), client, restored))
+	require.Equal(t, original.Totp.EncryptionKey, restored.Totp.EncryptionKey)
+	require.True(t, restored.Totp.EncryptionKeyConfigured)
+	restoredEncryptor, err := NewAESEncryptor(restored)
+	require.NoError(t, err)
+	plaintext, err := restoredEncryptor.Decrypt(ciphertext)
+	require.NoError(t, err)
+	require.Equal(t, "restored-secret", plaintext)
+	// Missing environment configuration also recovers the same durable key.
+	withoutEnv := &config.Config{}
+	require.NoError(t, ensureBootstrapSecrets(t.Context(), client, withoutEnv))
+	require.Equal(t, original.Totp.EncryptionKey, withoutEnv.Totp.EncryptionKey)
+}
+
 func TestEnsureBootstrapSecretsGenerateAndPersistJWTSecret(t *testing.T) {
 	client := newSecuritySecretTestClient(t)
 	cfg := &config.Config{}

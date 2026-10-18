@@ -3,6 +3,8 @@ package service
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -80,7 +82,7 @@ func openLocalBackupDirectory(directory string) (*os.Root, error) {
 	if err := validateLocalBackupDirectory(directory); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(directory, 0700); err != nil {
+	if err := os.MkdirAll(directory, 0700); err != nil { // #nosec G703 -- Explicit administrator-selected absolute directory, validated above; child paths are confined by os.Root.
 		return nil, fmt.Errorf("create backup directory: %w", err)
 	}
 	return os.OpenRoot(directory)
@@ -124,6 +126,7 @@ func (s *BackupService) startLocalBackup(ctx context.Context, triggeredBy string
 	record := &BackupRecord{
 		ID: id, Status: "running", BackupType: "postgres", Storage: "local",
 		LocalDirectory: cfg.Directory, FileName: "sub2api_" + now.Format("20060102_150405") + "_" + id + ".zip",
+		Portable:    true,
 		TriggeredBy: triggeredBy, StartedAt: now.Format(time.RFC3339), Progress: "dumping",
 	}
 	if expireDays > 0 {
@@ -196,8 +199,20 @@ func (s *BackupService) writeLocalZIP(ctx context.Context, record *BackupRecord)
 	defer func() { _ = dump.Close() }()
 	archive := zip.NewWriter(file)
 	entry, err := archive.Create("database.sql")
+	digest := sha256.New()
 	if err == nil {
-		_, err = io.Copy(entry, dump)
+		var written int64
+		written, err = io.Copy(io.MultiWriter(entry, digest), io.LimitReader(dump, maxBackupSQLBytes+1))
+		if err == nil && written > maxBackupSQLBytes {
+			err = errors.New("database.sql exceeds the supported 8 GiB ZIP restore limit")
+		}
+	}
+	if err == nil {
+		var metadata io.Writer
+		metadata, err = archive.Create("manifest.json")
+		if err == nil {
+			err = json.NewEncoder(metadata).Encode(localZIPManifest{Format: "sub2api", Version: 1, SQLSHA256: hex.EncodeToString(digest.Sum(nil)), KeysInDatabase: true})
+		}
 	}
 	err = errors.Join(err, dump.Close(), archive.Close())
 	if err != nil {
@@ -282,18 +297,11 @@ func (s *BackupService) restoreLocalZIP(ctx context.Context, record *BackupRecor
 	if err != nil {
 		return err
 	}
-	archive, err := zip.NewReader(file, info.Size())
+	reader, _, err := validateLocalZIP(ctx, file, info.Size())
 	if err != nil {
 		return err
 	}
-	if len(archive.File) != 1 || archive.File[0].Name != "database.sql" {
-		return errors.New("local backup must contain exactly one database.sql file")
-	}
-	reader, err := archive.File[0].Open()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = reader.Close() }()
+	defer func() { _ = reader.Close(); _ = os.Remove(reader.Name()) }()
 	return s.dumper.Restore(ctx, reader)
 }
 

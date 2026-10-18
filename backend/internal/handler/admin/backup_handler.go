@@ -274,6 +274,27 @@ func (h *BackupHandler) GetLocalConfig(c *gin.Context) {
 	}
 	response.Success(c, cfg)
 }
+
+func (h *BackupHandler) ImportLocalBackup(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, service.MaxBackupUploadBytes+(1<<20))
+	defer func() {
+		if c.Request.MultipartForm != nil {
+			_ = c.Request.MultipartForm.RemoveAll()
+		}
+	}()
+	file, _, err := c.Request.FormFile("file")
+	if err != nil {
+		response.BadRequest(c, "请选择 ZIP 备份文件，上传上限为 256 MiB（也受服务器和反向代理限制）")
+		return
+	}
+	defer func() { _ = file.Close() }()
+	record, err := h.backupService.ImportLocalZIP(c.Request.Context(), file)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, record)
+}
 func (h *BackupHandler) UpdateLocalConfig(c *gin.Context) {
 	var req service.BackupLocalConfig
 	if err := c.ShouldBindJSON(&req); err != nil {

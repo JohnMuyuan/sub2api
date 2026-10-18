@@ -4,14 +4,28 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPgDumperRestoreStopsOnSQLFailure(t *testing.T) {
+	executable, err := os.Executable()
+	require.NoError(t, err)
+	dumper, _ := newTestPgDumper(t, func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		require.Equal(t, "psql", name)
+		require.Contains(t, args, "--single-transaction")
+		require.Contains(t, args, "ON_ERROR_STOP=1")
+		return exec.CommandContext(ctx, executable, "-test.run=^$")
+	})
+	require.NoError(t, dumper.Restore(t.Context(), strings.NewReader("")))
+}
 
 func newTestPgDumper(t *testing.T, commandContext func(context.Context, string, ...string) *exec.Cmd) (*PgDumper, sqlmock.Sqlmock) {
 	t.Helper()

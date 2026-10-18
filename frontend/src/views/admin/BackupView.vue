@@ -1,5 +1,21 @@
 <template>
     <div class="space-y-6">
+      <div class="card p-6" data-testid="backup-upload-restore">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.backup.upload.title') }}</h3>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.backup.upload.description') }}</p>
+        <label for="backup-upload-file" class="input-label mt-4">{{ t('admin.backup.upload.file') }}</label>
+        <input id="backup-upload-file" type="file" accept=".zip,application/zip" class="input w-full" :disabled="uploadingBackup || !!restoringId" @change="selectRestoreFile" />
+        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.backup.upload.limitHint') }}</p>
+        <button type="button" class="btn btn-primary btn-sm mt-4" :disabled="!restoreFile || uploadingBackup || !!restoringId" @click="uploadAndRestore">
+          {{ uploadingBackup ? t('admin.backup.upload.validating') : t('admin.backup.upload.action') }}
+        </button>
+      </div>
+      <div v-if="restoreCompleted" class="card p-6" role="status" data-testid="backup-restore-restart">
+        <p>{{ t('admin.backup.upload.restartHint') }}</p>
+        <button type="button" class="btn btn-primary btn-sm mt-4" :disabled="restartingAfterRestore" @click="restartAfterRestore">
+          {{ restartingAfterRestore ? t('common.loading') : t('admin.backup.upload.restart') }}
+        </button>
+      </div>
       <div class="card p-6" data-testid="backup-local-settings">
         <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.backup.local.title') }}</h3>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.backup.local.description') }}</p>
@@ -265,7 +281,7 @@
                     : record.expires_at ? formatDate(record.expires_at) : t('admin.backup.neverExpire') }}
                 </td>
                 <td class="py-3 pr-4 text-xs">
-                  {{ record.triggered_by === 'scheduled' ? t('admin.backup.trigger.scheduled') : t('admin.backup.trigger.manual') }}
+                  {{ record.triggered_by === 'import' ? t('admin.backup.upload.imported') : record.triggered_by === 'scheduled' ? t('admin.backup.trigger.scheduled') : t('admin.backup.trigger.manual') }}
                 </td>
                 <td class="py-3 pr-4 text-xs">{{ formatDate(record.started_at) }}</td>
                 <td class="py-3 text-xs">
@@ -441,7 +457,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api'
-import { useAppStore } from '@/stores'
+import { useAppStore, useAuthStore } from '@/stores'
 import type {
   BackupS3Config,
   BackupScheduleConfig,
@@ -456,6 +472,7 @@ import BackupArchiveSettings from '@/components/admin/BackupArchiveSettings.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const backupStepUp = useStepUp()
 
 // 敏感操作被 2FA 门控拦截时的统一提示。
@@ -471,6 +488,47 @@ function reportStepUpBlocked(error: unknown): boolean {
 
 const localDirectory = ref('')
 const savingLocal = ref(false)
+const restoreFile = ref<File | null>(null)
+const uploadingBackup = ref(false)
+const restoreCompleted = ref(false)
+const restartingAfterRestore = ref(false)
+
+function selectRestoreFile(event: Event) {
+  restoreFile.value = (event.target as HTMLInputElement).files?.[0] || null
+}
+
+async function uploadAndRestore() {
+  const file = restoreFile.value
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.zip') || file.size > 256 * 1024 * 1024) {
+    appStore.showError(t('admin.backup.upload.invalidFile'))
+    return
+  }
+  uploadingBackup.value = true
+  try {
+    const record = await backupStepUp.run(() => adminAPI.backup.importLocalBackup(file))
+    updateRecordInList(record)
+    if (!record.portable && !window.confirm(t('admin.backup.upload.legacyWarning'))) return
+    await restoreBackup(record.id)
+  } catch (error) {
+    if (!isStepUpCancelled(error) && !reportStepUpBlocked(error)) appStore.showError((error as Error)?.message || t('errors.networkError'))
+  } finally { uploadingBackup.value = false }
+}
+
+async function restartAfterRestore() {
+  restartingAfterRestore.value = true
+  try {
+    await backupStepUp.run(() => adminAPI.system.restartService())
+    authStore.clearAuth()
+    // Match the existing updater's restart grace period before navigating.
+    await new Promise(resolve => setTimeout(resolve, 8000))
+    if (disposed) return
+    window.location.assign('/login')
+  } catch (error) {
+    if (!isStepUpCancelled(error) && !reportStepUpBlocked(error)) appStore.showError((error as Error)?.message || t('errors.networkError'))
+    restartingAfterRestore.value = false
+  }
+}
 const manualStorage = ref<'s3' | 'local'>('s3')
 
 async function loadLocalConfig() {
@@ -645,6 +703,7 @@ function startRestorePolling(backupId: string) {
         stopRestorePolling()
         restoringId.value = ''
         if (record.restore_status === 'completed') {
+          restoreCompleted.value = true
           appStore.showSuccess(t('admin.backup.actions.restoreSuccess'))
         } else {
           appStore.showError(record.restore_error || t('admin.backup.operations.restoreFailed'))
@@ -914,6 +973,7 @@ async function restoreBackup(id: string) {
   if (!window.confirm(t('admin.backup.actions.restoreConfirm'))) return
   const password = window.prompt(t('admin.backup.actions.restorePasswordPrompt'))
   if (!password) return
+  restoreCompleted.value = false
   restoringId.value = id
   try {
     const record = await backupStepUp.run(() => adminAPI.backup.restoreBackup(id, password))
