@@ -2,7 +2,7 @@ name: Custom upstream sync
 
 on:
   schedule:
-    - cron: '17 9 * * *'
+    - cron: '17 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -13,6 +13,7 @@ permissions:
   contents: write
   pull-requests: write
   packages: write
+  actions: write
 
 jobs:
   prepare:
@@ -56,7 +57,7 @@ jobs:
     uses: ./.github/workflows/custom-build.yml
     with:
       ref: ${{ needs.prepare.outputs.sha }}
-  propose:
+  merge-and-release:
     needs: [prepare, validate]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -64,20 +65,32 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: custom
+          fetch-depth: 0
       - name: Create or reuse the update pull request
+        env:
+          VALIDATED_SHA: ${{ needs.prepare.outputs.sha }}
         shell: bash
         run: |
           set -euo pipefail
           existing=$(gh pr list --base custom --head sync/upstream --state open --json url --jq '.[0].url // empty')
           if [ -n "$existing" ]; then
             echo "$existing" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
+          else
           cat > "$RUNNER_TEMP/upstream-pr.md" <<'BODY'
           Merge ranxi2001/sub2api's production branch into custom, retaining local features.
 
-          Validation: the Custom upstream sync workflow built the proposed commit with the project's Dockerfile (frontend checks/build and Go compilation). This is not a full unit or integration test run. Check that workflow's latest result before merging; GITHUB_TOKEN-created PRs do not automatically trigger the inherited PR workflows.
+          Validation: Custom upstream sync built this exact commit (frontend typecheck/build, Go compilation, focused custom-feature regression tests, persistent Docker update tests).
 
-          After review and merge, run Custom build with publish enabled to produce the custom image. Deployment is a separate step.
+          Successful validation fast-forwards custom to this commit and dispatches image and built-in updater publication. Conflicts, failed checks, or concurrent custom changes stop merging. Deployment remains manual.
           BODY
           gh pr create --base custom --head sync/upstream --title 'chore: sync upstream production' --body-file "$RUNNER_TEMP/upstream-pr.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          # No force: a concurrent custom commit rejects the push.
+          git fetch origin sync/upstream
+          git cat-file -e "$VALIDATED_SHA^{commit}"
+          git push origin "$VALIDATED_SHA:refs/heads/custom"
+          # GITHUB_TOKEN pushes do not trigger ordinary push workflows.
+          gh workflow run custom-build.yml --ref custom -F publish=true

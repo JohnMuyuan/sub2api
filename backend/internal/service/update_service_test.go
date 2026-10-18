@@ -73,6 +73,21 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 	require.Equal(t, "ranxi2001/sub2api", githubClient.latestRepo)
 }
 
+func TestUpdateServiceCustomDistribution(t *testing.T) {
+	previousRepo := githubRepo
+	githubRepo = "JohnMuyuan/sub2api"
+	t.Cleanup(func() { githubRepo = previousRepo })
+	client := &updateServiceGitHubClientStub{release: &GitHubRelease{TagName: "v2026.10.12"}}
+	svc := NewUpdateService(&updateServiceCacheStub{}, client, "2026.10.11", "release")
+	info, err := svc.CheckUpdate(context.Background(), true)
+	require.NoError(t, err)
+	require.True(t, info.HasUpdate)
+	require.Equal(t, "JohnMuyuan/sub2api", client.latestRepo)
+	require.Equal(t, "2026.10.12", info.LatestVersion)
+	require.Negative(t, compareVersions("0.1.999", "2026.10.1"))
+	require.Negative(t, compareVersions("2026.10.999", "2026.11.1"))
+}
+
 func newRollbackTestService(current string, releases []*GitHubRelease) *UpdateService {
 	return NewUpdateService(
 		&updateServiceCacheStub{},

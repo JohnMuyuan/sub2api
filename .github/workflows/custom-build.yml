@@ -1,10 +1,12 @@
 name: Custom build
 
 on:
+  push:
+    branches: [custom]
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the custom image to GHCR
+        description: Publish image and built-in updater release
         type: boolean
         default: false
   workflow_call:
@@ -13,18 +15,25 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: custom-build-${{ inputs.ref || 'publish' }}
+  cancel-in-progress: false
+
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      PUBLISH: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish == true) }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.ref || 'custom' }}
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - name: Image metadata
         id: image
@@ -32,9 +41,20 @@ jobs:
         run: |
           echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # Three-part calendar versions work with the existing updater.
+          echo "version=$(date -u +%Y.%-m).${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Verify custom feature regressions
+        working-directory: backend
+        run: go test -tags unit ./internal/service -run 'Test(UpdateService|LocalZIP|Backup|Restore|AccountRequestTimezone|HTTPUpstream)' -count=1
+      - name: Verify persistent Docker updates
+        run: /bin/sh deploy/tests/docker-persistent-update-test.sh
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
-        if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+        if: env.PUBLISH == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -44,13 +64,52 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
-          push: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true }}
+          load: true
           tags: |
             ${{ steps.image.outputs.name }}:custom
+            ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }}
             ${{ steps.image.outputs.name }}:sha-${{ steps.image.outputs.sha }}
           build-args: |
+            VERSION=${{ steps.image.outputs.version }}
             COMMIT=${{ steps.image.outputs.sha }}
+            UPDATE_REPO=${{ github.repository }}
+            PERSISTENT_UPDATES=1
             GOPROXY=https://proxy.golang.org,direct
             GOSUMDB=sum.golang.org
           cache-from: type=gha,scope=custom-build
           cache-to: type=gha,mode=max,scope=custom-build
+      - name: Publish image and matching updater archive
+        if: env.PUBLISH == 'true'
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          VERSION: ${{ steps.image.outputs.version }}
+          SOURCE_SHA: ${{ steps.image.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Skip obsolete queued builds instead of publishing over a newer head.
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/custom" --jq .object.sha)
+          if [ "$current" != "$SOURCE_SHA" ]; then
+            echo 'Custom advanced during this build; skipping obsolete publication.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/custom-release"
+          container=$(docker create "$IMAGE:$VERSION")
+          trap 'docker rm "$container" >/dev/null' EXIT
+          docker cp "$container:/app/sub2api" "$RUNNER_TEMP/custom-release/sub2api"
+          docker cp "$container:/app/resources" "$RUNNER_TEMP/custom-release/resources"
+          archive="sub2api_${VERSION}_linux_amd64.tar.gz"
+          tar -C "$RUNNER_TEMP/custom-release" -czf "$RUNNER_TEMP/$archive" sub2api resources
+          (cd "$RUNNER_TEMP" && sha256sum "$archive" > checksums.txt)
+          tag="v$VERSION"
+          # Draft first: update checks must never see missing assets.
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --draft \
+              --title "Custom $VERSION" --notes "Personal build of $SOURCE_SHA, including custom account timezones and local ZIP backups. Linux amd64."
+          fi
+          gh release upload "$tag" "$RUNNER_TEMP/$archive" "$RUNNER_TEMP/checksums.txt" --clobber --repo "$GITHUB_REPOSITORY"
+          docker push "$IMAGE:$VERSION"
+          docker push "$IMAGE:sha-$SOURCE_SHA"
+          docker push "$IMAGE:custom"
+          gh release edit "$tag" --draft=false --latest --repo "$GITHUB_REPOSITORY"
+          echo "Published $IMAGE:$VERSION and built-in update $tag from $SOURCE_SHA." >> "$GITHUB_STEP_SUMMARY"

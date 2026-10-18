@@ -22,6 +22,7 @@ ARG NPM_CONFIG_REGISTRY=
 # it on the native host arch instead of under QEMU emulation for the target.
 FROM --platform=${BUILDPLATFORM} ${NODE_IMAGE} AS frontend-builder
 ARG NPM_CONFIG_REGISTRY
+ARG UPDATE_REPO=ranxi2001/sub2api
 
 WORKDIR /app/frontend
 
@@ -41,7 +42,7 @@ RUN --mount=type=cache,id=sub2api-pnpm-store,target=/root/.local/share/pnpm/stor
 # Copy only that subtree to keep the build dependency minimal.
 COPY frontend/ ./
 COPY docs/legal/ /app/docs/legal/
-RUN pnpm run build
+RUN VITE_UPDATE_REPO=${UPDATE_REPO} pnpm run build
 
 # -----------------------------------------------------------------------------
 # Stage 2: Backend Builder
@@ -54,6 +55,7 @@ FROM --platform=${BUILDPLATFORM} ${GOLANG_IMAGE} AS backend-builder
 
 # Build arguments for version info (set by CI)
 ARG VERSION=
+ARG UPDATE_REPO=ranxi2001/sub2api
 ARG COMMIT=docker
 ARG DATE
 ARG GOPROXY
@@ -92,7 +94,7 @@ RUN --mount=type=cache,id=sub2api-gomod,target=/go/pkg/mod \
     DATE_VALUE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" && \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
     -tags embed \
-    -ldflags="-s -w -X main.Version=${VERSION_VALUE} -X main.Commit=${COMMIT} -X main.Date=${DATE_VALUE} -X main.BuildType=release" \
+    -ldflags="-s -w -X main.Version=${VERSION_VALUE} -X main.Commit=${COMMIT} -X main.Date=${DATE_VALUE} -X main.BuildType=release -X github.com/Wei-Shaw/sub2api/internal/service.githubRepo=${UPDATE_REPO}" \
     -trimpath \
     -o /app/sub2api \
     ./cmd/server
@@ -106,6 +108,8 @@ FROM ${POSTGRES_IMAGE} AS pg-client
 # Stage 4: Final Runtime Image
 # -----------------------------------------------------------------------------
 FROM ${ALPINE_IMAGE}
+ARG PERSISTENT_UPDATES=0
+ENV SUB2API_PERSISTENT_UPDATES=${PERSISTENT_UPDATES}
 
 # Labels
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
