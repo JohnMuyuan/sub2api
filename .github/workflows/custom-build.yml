@@ -78,6 +78,14 @@ jobs:
             GOSUMDB=sum.golang.org
           cache-from: type=gha,scope=custom-build
           cache-to: type=gha,mode=max,scope=custom-build
+      - name: Verify the image starts with the embedded release version
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          VERSION: ${{ steps.image.outputs.version }}
+          SOURCE_SHA: ${{ steps.image.outputs.sha }}
+        run: |
+          set -euo pipefail
+          docker run --rm "$IMAGE:$VERSION" --version 2>&1 | grep -F "Sub2API $VERSION (commit: $SOURCE_SHA,"
       - name: Publish image and matching updater archive
         if: env.PUBLISH == 'true'
         env:
