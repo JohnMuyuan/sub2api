@@ -24,6 +24,9 @@ import (
 const maxArchive = 256 << 20
 const maxExtracted = 768 << 20
 
+// Custom releases publish the matching worker in their own repository too.
+var githubRepo = "ranxi2001/sub2api"
+
 type Status struct {
 	StartedAt int64  `json:"-"`
 	Mode      string `json:"mode"`
@@ -154,7 +157,7 @@ func (m *Manager) prepare(ctx context.Context) (string, error) {
 	// A release digest from the owner repository is required; never execute an
 	// unverified download or follow an arbitrary manifest download URL.
 	name := "sub2api-reauth_" + m.version + "_linux_" + runtime.GOARCH + ".tar.gz"
-	url := "https://api.github.com/repos/ranxi2001/sub2api/releases/tags/v" + m.version
+	url := "https://api.github.com/repos/" + githubRepo + "/releases/tags/v" + m.version
 	body, err := m.get(ctx, url, 4<<20)
 	if err != nil {
 		return "", err
@@ -180,7 +183,7 @@ func (m *Manager) prepare(ctx context.Context) (string, error) {
 	if _, err := hex.DecodeString(digest); err != nil {
 		return "", errors.New("invalid runtime digest")
 	}
-	archive, err := m.get(ctx, "https://github.com/ranxi2001/sub2api/releases/download/v"+m.version+"/"+name, maxArchive)
+	archive, err := m.get(ctx, "https://github.com/"+githubRepo+"/releases/download/v"+m.version+"/"+name, maxArchive)
 	if err != nil {
 		return "", err
 	}

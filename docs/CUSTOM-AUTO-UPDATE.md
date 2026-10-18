@@ -16,7 +16,9 @@
   also trigger publication automatically.
 - One Linux amd64 Docker build produces the `custom`, numeric version, and
   `sha-<commit>` image tags, plus the matching executable tarball and SHA-256
-  checksums in a GitHub Release. The release stays draft until assets and images
+  checksums in a GitHub Release. The matching managed-login Python/Node runtime
+  is built and validated with the existing upstream tooling, and is also
+  downloaded from this fork for this version. The release stays draft until assets and images
   are uploaded. The existing general upstream Release workflow is unchanged.
 - Versions use `year.month.workflow-run-number` (for example `2026.10.12`),
   independent of upstream version numbers. Release notes identify the source
