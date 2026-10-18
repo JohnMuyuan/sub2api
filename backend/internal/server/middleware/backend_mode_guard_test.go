@@ -423,3 +423,25 @@ func TestBackendModeObserverOwnUsageOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestBackendModeAccountViewerKeepsSelfService(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, role := range []string{service.RoleAccountViewer, service.RoleUser} {
+		for _, path := range []string{"/api/v1/keys", "/api/v1/usage", "/api/v1/subscriptions", "/api/v1/user/profile"} {
+			for _, method := range []string{http.MethodGet, http.MethodPost} {
+				t.Run(role+method+path, func(t *testing.T) {
+					router := gin.New()
+					router.Use(func(c *gin.Context) { c.Set(string(ContextKeyUserRole), role) }, BackendModeUserGuard(newBackendModeSettingService(t, "true")))
+					router.Handle(method, path, func(c *gin.Context) { c.Status(200) })
+					w := httptest.NewRecorder()
+					router.ServeHTTP(w, httptest.NewRequest(method, path, nil))
+					want := 403
+					if role == service.RoleAccountViewer {
+						want = 200
+					}
+					require.Equal(t, want, w.Code)
+				})
+			}
+		}
+	}
+}

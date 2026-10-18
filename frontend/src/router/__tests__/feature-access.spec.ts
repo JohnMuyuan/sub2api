@@ -149,9 +149,14 @@ describe('feature route guard', () => {
     const backendAccounts = runGuard({ requiresAccountManagement: true }, '/admin/accounts')
     await backendAccounts.navigation
     expect(backendAccounts.next).toHaveBeenCalledWith()
-    const backendKeys = runGuard({}, '/keys')
-    await backendKeys.navigation
-    expect(backendKeys.next).toHaveBeenCalledWith('/login')
+    for (const path of ['/keys', '/dashboard', '/usage']) {
+      const own = runGuard({}, path)
+      await own.navigation
+      expect(own.next).toHaveBeenCalledWith()
+    }
+    const backendAdmin = runGuard({ requiresAdmin: true }, '/admin/users')
+    await backendAdmin.navigation
+    expect(backendAdmin.next).toHaveBeenCalledWith('/dashboard')
   })
 
   it('keeps the account page closed to regular users', async () => {

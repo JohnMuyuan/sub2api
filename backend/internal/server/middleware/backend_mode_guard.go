@@ -18,7 +18,9 @@ func BackendModeUserGuard(settingService *service.SettingService) gin.HandlerFun
 			return
 		}
 		role, _ := GetUserRoleFromContext(c)
-		if role == service.RoleAdmin || (role == service.RoleObserver && observerOwnUsageRoute(c)) {
+		// The account viewer is a regular user with read-only account access and
+		// keeps full self-service in backend mode; regular users stay blocked.
+		if role == service.RoleAdmin || role == service.RoleAccountViewer || (role == service.RoleObserver && observerOwnUsageRoute(c)) {
 			c.Next()
 			return
 		}

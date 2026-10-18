@@ -960,7 +960,7 @@ router.beforeEach(async (to, _from, next) => {
         return
       }
       // Backend mode:登录的非管理员也不可见(匿名由下方公共拦截处理,广场不在白名单)
-      if (appStore.backendModeEnabled && authStore.isAuthenticated && !authStore.isAdmin) {
+      if (appStore.backendModeEnabled && authStore.isAuthenticated && !authStore.isAdmin && !authStore.isAccountViewer) {
         next('/login')
         return
       }
@@ -1086,9 +1086,9 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
-  // Backend mode: admins get full access; observers may use account management and their own usage.
+  // Backend mode: admins and account viewers keep their pages; observers may use account management and their own usage.
   if (appStore.backendModeEnabled) {
-    if (authStore.isAuthenticated && (authStore.isAdmin || (authStore.isObserver && (to.meta.requiresAccountManagement || to.path === '/usage')) || (authStore.isAccountViewer && to.meta.requiresAccountManagement))) {
+    if (authStore.isAuthenticated && (authStore.isAdmin || authStore.isAccountViewer || (authStore.isObserver && (to.meta.requiresAccountManagement || to.path === '/usage')))) {
       next()
       return
     }
