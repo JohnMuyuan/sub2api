@@ -19,7 +19,10 @@ import requestTiming from './requestTiming'
 
 import autoConfig from './autoConfig'
 
+import accountViewer from './accountViewer'
+
 export default {
+  accountViewer,
   autoConfig,
   priorityScheduling,
   qualityOps,

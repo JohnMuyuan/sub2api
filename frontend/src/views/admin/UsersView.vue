@@ -30,6 +30,7 @@
                   { value: '', label: t('admin.users.allRoles') },
                   { value: 'admin', label: t('admin.users.admin') },
                   { value: 'observer', label: t('admin.users.roles.observer') },
+                  { value: 'account_viewer', label: t('admin.users.roles.account_viewer') },
                   { value: 'user', label: t('admin.users.user') }
                 ]"
                 @change="applyFilter"

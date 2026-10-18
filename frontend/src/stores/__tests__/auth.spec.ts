@@ -388,3 +388,15 @@ describe('useAuthStore', () => {
     })
   })
 })
+
+describe('Account read-only role capabilities', () => {
+  it('does not inherit observer management or administrator permissions', () => {
+    setActivePinia(createPinia())
+    const store = useAuthStore()
+    store.user = { ...fakeUser, role: 'account_viewer', observer_group_ids: [10] }
+    expect(store.isAccountViewer).toBe(true)
+    expect(store.isObserver).toBe(false)
+    expect(store.isAdmin).toBe(false)
+    expect(store.canManageAccounts).toBe(false)
+  })
+})

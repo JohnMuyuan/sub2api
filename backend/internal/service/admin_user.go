@@ -111,8 +111,8 @@ func normalizeUserRole(role, fallback string) (string, error) {
 	if role == "" {
 		return fallback, nil
 	}
-	if role != RoleAdmin && role != RoleUser && role != RoleObserver {
-		return "", fmt.Errorf("invalid role: %q (must be %s, %s or %s)", role, RoleAdmin, RoleUser, RoleObserver)
+	if role != RoleAdmin && role != RoleUser && role != RoleObserver && role != RoleAccountViewer {
+		return "", fmt.Errorf("invalid role: %q (must be %s, %s, %s or %s)", role, RoleAdmin, RoleUser, RoleObserver, RoleAccountViewer)
 	}
 	return role, nil
 }
@@ -134,7 +134,7 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 	if err := s.validateGroupIDsExist(ctx, input.ObserverGroupIDs); err != nil {
 		return nil, err
 	}
-	if role != RoleObserver {
+	if role != RoleObserver && role != RoleAccountViewer {
 		input.ObserverGroupIDs = []int64{}
 	}
 	user := &User{
@@ -306,7 +306,7 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		user.ObserverGroupIDs = *input.ObserverGroupIDs
 		fields.ObserverGroupIDs = true
 	}
-	if user.Role != RoleObserver && (fields.Role || fields.ObserverGroupIDs) {
+	if user.Role != RoleObserver && user.Role != RoleAccountViewer && (fields.Role || fields.ObserverGroupIDs) {
 		user.ObserverGroupIDs = []int64{}
 		fields.ObserverGroupIDs = true
 	}

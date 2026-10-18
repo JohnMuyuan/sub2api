@@ -119,3 +119,9 @@ var observerAccountRoutes = map[string]struct{}{
 	"GET /api/v1/admin/proxies/all":                                  {},
 	"GET /api/v1/admin/tls-fingerprint-profiles":                     {},
 }
+
+// Separate allowlist: a GET on an admin route is not necessarily safe (exports
+// and some quota endpoints reveal credentials or trigger upstream probes).
+func AccountViewerRouteAllowed(method, route string) bool {
+	return method == "GET" && (route == "/api/v1/admin/account-viewer/accounts" || route == "/api/v1/admin/account-viewer/accounts/:id/stats")
+}

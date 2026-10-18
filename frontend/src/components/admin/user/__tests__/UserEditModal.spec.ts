@@ -49,7 +49,7 @@ const mountModal = (concurrency: number, overrides: Record<string, unknown> = {}
       },
       Select: {
         props: ['modelValue', 'options', 'searchable'],
-        template: `<select data-test="role-select" :value="modelValue" @change="$emit('update:modelValue', $event.target.value)"><option value="user">user</option><option value="observer">observer</option><option value="admin">admin</option></select>`
+        template: `<select data-test="role-select" :value="modelValue" @change="$emit('update:modelValue', $event.target.value)"><option value="user">user</option><option value="observer">observer</option><option value="account_viewer">account_viewer</option><option value="admin">admin</option></select>`
       },
       ObserverGroupSelector: true,
       Icon: true,
@@ -187,5 +187,20 @@ describe('UserEditModal concurrency', () => {
     expect(update.mock.calls[1][1]).toEqual(expect.objectContaining({ concurrency: 1005, observer_group_ids: [41] }))
     expect(update.mock.calls[1][1]).not.toHaveProperty('observer_setup')
     expect(wrapper.emitted('success')).toBeTruthy()
+  })
+})
+
+describe('UserEditModal account read-only role', () => {
+  it('shows view-only group grants and saves the dedicated role without observer setup', async () => {
+    update.mockResolvedValue({ role: 'account_viewer', observer_group_ids: [10] })
+    const wrapper = mountModal(1, { observer_group_ids: [10] })
+    await wrapper.get('[data-test="role-select"]').setValue('account_viewer')
+    expect(wrapper.findComponent({ name: 'ObserverGroupSelector' }).props('readOnly')).toBe(true)
+    expect(wrapper.find('[data-test="observer-setup"]').exists()).toBe(false)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(update).toHaveBeenCalledWith(7, expect.objectContaining({ role: 'account_viewer', observer_group_ids: [10] }))
+    expect(update.mock.calls.at(-1)?.[1]).not.toHaveProperty('observer_setup')
+    wrapper.unmount()
   })
 })

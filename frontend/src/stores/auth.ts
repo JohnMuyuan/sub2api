@@ -97,6 +97,7 @@ export const useAuthStore = defineStore('auth', () => {
   })
 
   const isObserver = computed(() => user.value?.role === 'observer')
+  const isAccountViewer = computed(() => user.value?.role === 'account_viewer')
   const canManageAccounts = computed(() => isAdmin.value || isObserver.value)
 
   const isSimpleMode = computed(() => runMode.value === 'simple')
@@ -502,6 +503,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     isAdmin,
     isObserver,
+    isAccountViewer,
     canManageAccounts,
     isSimpleMode,
     hasPendingAuthSession,

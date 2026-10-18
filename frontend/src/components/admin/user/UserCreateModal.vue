@@ -29,11 +29,12 @@
         <label class="input-label">{{ t('admin.users.form.roleLabel') }}</label>
         <select v-model="form.role" class="input">
           <option value="user">{{ t('admin.users.roles.user') }}</option>
+          <option value="account_viewer">{{ t('admin.users.roles.account_viewer') }}</option>
           <option value="observer">{{ t('admin.users.roles.observer') }}</option>
           <option value="admin">{{ t('admin.users.roles.admin') }}</option>
         </select>
       </div>
-      <ObserverGroupSelector v-if="form.role === 'observer'" v-model="form.observer_group_ids" />
+      <ObserverGroupSelector v-if="form.role === 'observer' || form.role === 'account_viewer'" v-model="form.observer_group_ids" :read-only="form.role === 'account_viewer'" />
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="input-label">{{ t('admin.users.columns.balance') }}</label>
@@ -85,7 +86,7 @@ const props = defineProps<{ show: boolean }>()
 const emit = defineEmits(['close', 'success']); const { t } = useI18n()
 const appStore = useAppStore()
 
-const form = reactive({ email: '', password: '', username: '', notes: '', role: 'user' as 'user' | 'admin' | 'observer', observer_group_ids: [] as number[], balance: '', concurrency: 1, rpm_limit: 0 })
+const form = reactive({ email: '', password: '', username: '', notes: '', role: 'user' as 'user' | 'admin' | 'observer' | 'account_viewer', observer_group_ids: [] as number[], balance: '', concurrency: 1, rpm_limit: 0 })
 
 const stepUp = useStepUp()
 const loading = ref(false)

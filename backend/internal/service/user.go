@@ -81,6 +81,8 @@ func (u *User) IsObserver() bool {
 	return u.Role == RoleObserver
 }
 
+func (u *User) IsAccountViewer() bool { return u.Role == RoleAccountViewer }
+
 func (u *User) IsActive() bool {
 	return u.Status == StatusActive
 }

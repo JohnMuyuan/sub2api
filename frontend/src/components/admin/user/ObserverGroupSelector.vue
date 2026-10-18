@@ -1,8 +1,8 @@
 <template>
   <div class="space-y-2">
-    <GroupSelector :model-value="modelValue" :groups="groups" :label="t('admin.users.observerGroups')"
+    <GroupSelector :model-value="modelValue" :groups="groups" :label="t(readOnly ? 'accountViewer.groups' : 'admin.users.observerGroups')"
       @update:model-value="$emit('update:modelValue', $event)" />
-    <p class="input-hint">{{ t('admin.users.observerGroupsHint') }}</p>
+    <p class="input-hint">{{ t(readOnly ? 'accountViewer.groupsHint' : 'admin.users.observerGroupsHint') }}</p>
     <p v-if="error" class="text-sm text-red-500">{{ error }}</p>
   </div>
 </template>
@@ -14,7 +14,7 @@ import { adminAPI } from '@/api/admin'
 import type { Group } from '@/types'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 
-defineProps<{ modelValue: number[] }>()
+defineProps<{ modelValue: number[]; readOnly?: boolean }>()
 defineEmits<{ 'update:modelValue': [value: number[]] }>()
 const { t } = useI18n()
 const groups = ref<Group[]>([])

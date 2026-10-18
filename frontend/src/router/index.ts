@@ -19,6 +19,11 @@ import { resolveRouteDocumentTitle } from './title'
  * Route definitions with lazy loading
  */
 const routes: RouteRecordRaw[] = [
+  {
+    path: '/account-pool', name: 'AccountPoolReadOnly',
+    component: () => import('@/views/user/AccountPoolReadOnlyView.vue'),
+    meta: { requiresAuth: true, requiresAccountViewing: true, title: 'Account pool', titleKey: 'accountViewer.title' }
+  },
   // ==================== Setup Routes ====================
   {
     path: '/setup',
@@ -918,6 +923,7 @@ router.beforeEach(async (to, _from, next) => {
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
+    if (authStore.isAuthenticated && authStore.isAccountViewer && (to.path === '/login' || to.path === '/register')) { next('/account-pool'); return }
     if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
       // In backend mode, non-admin users should NOT be redirected away from login
       // (they are blocked from all protected routes, so redirecting would cause a loop)
@@ -986,6 +992,12 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
+  // A dedicated page prevents the read-only role from entering management UIs.
+  if (authStore.isAccountViewer) {
+    if (to.path !== '/account-pool') { next('/account-pool'); return }
+    next(); return
+  }
+  if (to.meta.requiresAccountViewing && !authStore.isAdmin) { next('/dashboard'); return }
   if (to.meta.requiresAccountManagement && !authStore.canManageAccounts) {
     next('/dashboard')
     return
