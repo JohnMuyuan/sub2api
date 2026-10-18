@@ -34,6 +34,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - name: Image metadata
         id: image
@@ -53,6 +54,8 @@ jobs:
           go test -tags unit ./internal/service -run 'Test(UpdateService|LocalZIP|Backup|Restore|AccountRequestTimezone|HTTPUpstream)' -count=1
           go test ./internal/reauthruntime -count=1
           go test ./internal/repository -run 'Test(EnsureBootstrapSecrets|PgDumperRestoreStopsOnSQLFailure)' -count=1
+      - name: Verify custom release notes and README merges
+        run: python -m unittest discover -s .github/release-tools -p test_custom_release_notes.py
       - name: Verify persistent Docker updates
         run: /bin/sh deploy/tests/docker-persistent-update-test.sh
       - uses: docker/setup-buildx-action@v3
@@ -129,11 +132,15 @@ jobs:
           cp reauth-output/*.tar.gz "$RUNNER_TEMP/"
           (cd "$RUNNER_TEMP" && sha256sum "$archive" sub2api-reauth_*.tar.gz > checksums.txt)
           tag="v$VERSION"
+          python .github/release-tools/custom_release_notes.py \
+            --repo "$GITHUB_REPOSITORY" --version "$VERSION" --source "$SOURCE_SHA" \
+            --output "$RUNNER_TEMP/custom-release-notes.md"
           # Draft first: update checks must never see missing assets.
           if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --draft \
-              --title "Custom $VERSION" --notes "Personal build of $SOURCE_SHA, including custom account timezones and local ZIP backups. Linux amd64."
+              --title "Custom $VERSION" --notes-file "$RUNNER_TEMP/custom-release-notes.md"
           fi
+          gh release edit "$tag" --notes-file "$RUNNER_TEMP/custom-release-notes.md" --repo "$GITHUB_REPOSITORY"
           gh release upload "$tag" "$RUNNER_TEMP/$archive" "$RUNNER_TEMP"/sub2api-reauth_*.tar.gz "$RUNNER_TEMP/checksums.txt" --clobber --repo "$GITHUB_REPOSITORY"
           docker push "$IMAGE:$VERSION"
           docker push "$IMAGE:sha-$SOURCE_SHA"

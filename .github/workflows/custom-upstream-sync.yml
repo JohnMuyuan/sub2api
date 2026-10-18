@@ -43,7 +43,7 @@ jobs:
           fi
           previous=$(git ls-remote origin refs/heads/sync/upstream | cut -f1)
           git switch -c sync/upstream
-          if ! git merge --no-edit upstream/production; then
+          if ! git -c merge.keep-custom-readme.driver=true merge --no-edit upstream/production; then
             echo 'Upstream merge has conflicts. The custom branch was not changed. Resolve locally before retrying.' >> "$GITHUB_STEP_SUMMARY"
             git diff --name-only --diff-filter=U >> "$GITHUB_STEP_SUMMARY"
             exit 1
