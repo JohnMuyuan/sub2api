@@ -103,6 +103,8 @@ export default {
         legacyWarning: 'This legacy database backup has no portable-key marker. The original encryption key must already be configured on the new server to decrypt old data. Prefer creating a new ZIP after upgrading. Continue anyway?',
         restartHint: 'Database restored. Restart now to load the restored keys, settings, and accounts, then sign in with the administrator account from the backup.',
         restart: 'Restart service and return to login',
+        autoRestartConfirm: 'Restore replaces the current database and automatically restarts the service on success. Sign in afterward using the administrator account from the backup. Continue?',
+        autoRestartHint: 'Restoring. The service restarts automatically on success; sign in afterward with the administrator account from the backup. Docker requires an always or unless-stopped restart policy.',
       },
       title: 'Database Backup',
       description: 'Full database backup to S3-compatible storage with scheduled backup and restore',

@@ -179,7 +179,8 @@ func (h *BackupHandler) GetDownloadURL(c *gin.Context) {
 // ─── 恢复操作（需要重新输入管理员密码） ───
 
 type RestoreBackupRequest struct {
-	Password string `json:"password" binding:"required"`
+	Password            string `json:"password" binding:"required"`
+	RestartAfterRestore bool   `json:"restart_after_restore"`
 }
 
 func (h *BackupHandler) RestoreBackup(c *gin.Context) {
@@ -213,7 +214,7 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		return
 	}
 
-	record, err := h.backupService.StartRestore(c.Request.Context(), backupID)
+	record, err := h.backupService.StartRestore(c.Request.Context(), backupID, req.RestartAfterRestore)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

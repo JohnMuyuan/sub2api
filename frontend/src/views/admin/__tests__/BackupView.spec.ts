@@ -107,7 +107,7 @@ function mountBackupView() {
 }
 
 describe('admin BackupView', () => {
-  it('validates uploaded ZIP before confirming restore and shows restart after completion', async () => {
+  it('validates uploaded ZIP before confirming restore with an automatic restart', async () => {
     vi.useFakeTimers()
     try {
       const imported = { ...baseRecord('uploaded'), storage: 'local', portable: true }
@@ -125,11 +125,12 @@ describe('admin BackupView', () => {
       await wrapper.get('[data-testid="backup-upload-restore"] button').trigger('click')
       await flushPromises()
       expect(importLocalBackup).toHaveBeenCalledWith(file)
-      expect(restoreBackup).toHaveBeenCalledWith('uploaded', 'current-admin-password')
+      expect(restoreBackup).toHaveBeenCalledWith('uploaded', 'current-admin-password', true)
       await vi.advanceTimersByTimeAsync(2000)
       await flushPromises()
       expect(wrapper.find('[data-testid="backup-restore-restart"]').exists()).toBe(true)
     } finally {
+      vi.clearAllTimers()
       vi.useRealTimers()
     }
   })

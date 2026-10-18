@@ -10,11 +10,14 @@
           {{ uploadingBackup ? t('admin.backup.upload.validating') : t('admin.backup.upload.action') }}
         </button>
       </div>
-      <div v-if="restoreCompleted" class="card p-6" role="status" data-testid="backup-restore-restart">
-        <p>{{ t('admin.backup.upload.restartHint') }}</p>
-        <button type="button" class="btn btn-primary btn-sm mt-4" :disabled="restartingAfterRestore" @click="restartAfterRestore">
-          {{ restartingAfterRestore ? t('common.loading') : t('admin.backup.upload.restart') }}
-        </button>
+      <div v-if="restoreCompleted || automaticRestoreRestart" class="card p-6" role="status" data-testid="backup-restore-restart">
+        <p v-if="automaticRestoreRestart">{{ t('admin.backup.upload.autoRestartHint') }}</p>
+        <template v-else>
+          <p>{{ t('admin.backup.upload.restartHint') }}</p>
+          <button type="button" class="btn btn-primary btn-sm mt-4" :disabled="restartingAfterRestore" @click="restartAfterRestore">
+            {{ restartingAfterRestore ? t('common.loading') : t('admin.backup.upload.restart') }}
+          </button>
+        </template>
       </div>
       <div class="card p-6" data-testid="backup-local-settings">
         <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.backup.local.title') }}</h3>
@@ -491,6 +494,7 @@ const savingLocal = ref(false)
 const restoreFile = ref<File | null>(null)
 const uploadingBackup = ref(false)
 const restoreCompleted = ref(false)
+const automaticRestoreRestart = ref(false)
 const restartingAfterRestore = ref(false)
 
 function selectRestoreFile(event: Event) {
@@ -509,7 +513,7 @@ async function uploadAndRestore() {
     const record = await backupStepUp.run(() => adminAPI.backup.importLocalBackup(file))
     updateRecordInList(record)
     if (!record.portable && !window.confirm(t('admin.backup.upload.legacyWarning'))) return
-    await restoreBackup(record.id)
+    await restoreBackup(record.id, true)
   } catch (error) {
     if (!isStepUpCancelled(error) && !reportStepUpBlocked(error)) appStore.showError((error as Error)?.message || t('errors.networkError'))
   } finally { uploadingBackup.value = false }
@@ -705,7 +709,14 @@ function startRestorePolling(backupId: string) {
         if (record.restore_status === 'completed') {
           restoreCompleted.value = true
           appStore.showSuccess(t('admin.backup.actions.restoreSuccess'))
+          if (automaticRestoreRestart.value) {
+            authStore.clearAuth()
+            await new Promise(resolve => setTimeout(resolve, 8000))
+            if (!disposed) window.location.assign('/login')
+            return
+          }
         } else {
+          automaticRestoreRestart.value = false
           appStore.showError(record.restore_error || t('admin.backup.operations.restoreFailed'))
         }
         await loadBackups()
@@ -969,14 +980,18 @@ function closeDownloadParts() {
   downloadParts.value = []
 }
 
-async function restoreBackup(id: string) {
-  if (!window.confirm(t('admin.backup.actions.restoreConfirm'))) return
+async function restoreBackup(id: string, restartAutomatically = false) {
+  if (!window.confirm(t(restartAutomatically ? 'admin.backup.upload.autoRestartConfirm' : 'admin.backup.actions.restoreConfirm'))) return
   const password = window.prompt(t('admin.backup.actions.restorePasswordPrompt'))
   if (!password) return
   restoreCompleted.value = false
+  automaticRestoreRestart.value = false
   restoringId.value = id
   try {
-    const record = await backupStepUp.run(() => adminAPI.backup.restoreBackup(id, password))
+    const record = await backupStepUp.run(() => restartAutomatically
+      ? adminAPI.backup.restoreBackup(id, password, true)
+      : adminAPI.backup.restoreBackup(id, password))
+    automaticRestoreRestart.value = restartAutomatically
     updateRecordInList(record)
     startRestorePolling(id)
   } catch (error: any) {

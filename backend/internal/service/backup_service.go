@@ -23,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/sysutil"
 )
 
 const (
@@ -121,27 +122,28 @@ type BackupScheduleConfig struct {
 
 // BackupRecord 备份记录
 type BackupRecord struct {
-	Storage          string                `json:"storage,omitempty"`
-	LocalDirectory   string                `json:"local_directory,omitempty"`
-	ID               string                `json:"id"`
-	Status           string                `json:"status"`      // pending, running, completed, failed
-	BackupType       string                `json:"backup_type"` // postgres
-	FileName         string                `json:"file_name"`
-	S3Key            string                `json:"s3_key"`
-	Parts            []BackupPart          `json:"parts,omitempty"`
-	SizeBytes        int64                 `json:"size_bytes"`
-	TriggeredBy      string                `json:"triggered_by"` // manual, scheduled
-	ErrorMsg         string                `json:"error_message,omitempty"`
-	StartedAt        string                `json:"started_at"`
-	FinishedAt       string                `json:"finished_at,omitempty"`
-	ExpiresAt        string                `json:"expires_at,omitempty"`     // 过期时间
-	Progress         string                `json:"progress,omitempty"`       // "dumping", "uploading", ""
-	RestoreStatus    string                `json:"restore_status,omitempty"` // "", "running", "completed", "failed"
-	Portable         bool                  `json:"portable,omitempty"`
-	RestoreStartedAt string                `json:"restore_started_at,omitempty"`
-	RestoreError     string                `json:"restore_error,omitempty"`
-	RestoredAt       string                `json:"restored_at,omitempty"`
-	MonthlyArchive   *BackupMonthlyArchive `json:"monthly_archive,omitempty"`
+	Storage             string                `json:"storage,omitempty"`
+	LocalDirectory      string                `json:"local_directory,omitempty"`
+	ID                  string                `json:"id"`
+	Status              string                `json:"status"`      // pending, running, completed, failed
+	BackupType          string                `json:"backup_type"` // postgres
+	FileName            string                `json:"file_name"`
+	S3Key               string                `json:"s3_key"`
+	Parts               []BackupPart          `json:"parts,omitempty"`
+	SizeBytes           int64                 `json:"size_bytes"`
+	TriggeredBy         string                `json:"triggered_by"` // manual, scheduled
+	ErrorMsg            string                `json:"error_message,omitempty"`
+	StartedAt           string                `json:"started_at"`
+	FinishedAt          string                `json:"finished_at,omitempty"`
+	ExpiresAt           string                `json:"expires_at,omitempty"`     // 过期时间
+	Progress            string                `json:"progress,omitempty"`       // "dumping", "uploading", ""
+	RestoreStatus       string                `json:"restore_status,omitempty"` // "", "running", "completed", "failed"
+	Portable            bool                  `json:"portable,omitempty"`
+	RestartAfterRestore bool                  `json:"restart_after_restore,omitempty"`
+	RestoreStartedAt    string                `json:"restore_started_at,omitempty"`
+	RestoreError        string                `json:"restore_error,omitempty"`
+	RestoredAt          string                `json:"restored_at,omitempty"`
+	MonthlyArchive      *BackupMonthlyArchive `json:"monthly_archive,omitempty"`
 }
 
 // BackupDownloadPart 描述一个可下载的备份分卷。
@@ -162,13 +164,13 @@ type BackupService struct {
 	settingRepo SettingRepository
 	dbCfg       *config.DatabaseConfig
 	encryptor   SecretEncryptor
-	// encryptionKeyConfigured mirrors cfg.Totp.EncryptionKeyConfigured: false
-	// means the secret encryption key was auto-generated and does not survive a
-	// restart. Durable-secret writers must refuse to persist new secrets in that
-	// mode (#4524).
+	// encryptionKeyConfigured mirrors cfg.Totp.EncryptionKeyConfigured: the key
+	// must come from configuration or have completed database persistence during
+	// bootstrap before durable-secret writers may store encrypted values.
 	encryptionKeyConfigured bool
 	storeFactory            BackupObjectStoreFactory
 	dumper                  DBDumper
+	restartAfterRestore     func()
 
 	opMu      sync.Mutex // 保护 backingUp/restoring 标志
 	backingUp bool
@@ -214,6 +216,7 @@ func NewBackupService(
 		encryptionKeyConfigured: cfg.Totp.EncryptionKeyConfigured,
 		storeFactory:            storeFactory,
 		dumper:                  dumper,
+		restartAfterRestore:     sysutil.RestartServiceAsync,
 		bgCtx:                   bgCtx,
 		bgCancel:                bgCancel,
 		partSizeBytes:           defaultBackupPartSizeBytes,
@@ -1022,7 +1025,7 @@ func (s *BackupService) RestoreBackup(ctx context.Context, backupID string) erro
 }
 
 // StartRestore 异步恢复备份，立即返回
-func (s *BackupService) StartRestore(ctx context.Context, backupID string) (*BackupRecord, error) {
+func (s *BackupService) StartRestore(ctx context.Context, backupID string, restart ...bool) (*BackupRecord, error) {
 	if s.shuttingDown.Load() {
 		return nil, infraerrors.ServiceUnavailable("SERVER_SHUTTING_DOWN", "server is shutting down")
 	}
@@ -1068,6 +1071,7 @@ func (s *BackupService) StartRestore(ctx context.Context, backupID string) (*Bac
 	if err != nil {
 		return nil, err
 	}
+	record.RestartAfterRestore = len(restart) > 0 && restart[0]
 
 	launched = true
 	result := *record
@@ -1096,6 +1100,13 @@ func (s *BackupService) StartRestore(ctx context.Context, backupID string) (*Bac
 
 // executeRestore 后台执行恢复
 func (s *BackupService) executeRestore(record *BackupRecord, objectStore BackupObjectStore) {
+	defer func() {
+		// Restore may replace the currently signed-in administrator, so perform
+		// an explicitly requested restart without requiring a second login.
+		if record.RestoreStatus == "completed" && record.RestartAfterRestore && s.restartAfterRestore != nil {
+			s.restartAfterRestore()
+		}
+	}()
 	ctx, cancel := context.WithTimeout(s.bgCtx, 30*time.Minute)
 	defer cancel()
 	if record.Storage == "local" {

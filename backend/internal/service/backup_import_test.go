@@ -47,18 +47,21 @@ func TestBackupImportRoundTripWithoutExistingRecords(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(sourceDir, backup.FileName))
 	require.NoError(t, err)
 	target, dumper, _ := localBackupTestService(t)
+	restarts := 0
+	target.restartAfterRestore = func() { restarts++ }
 	imported, err := target.ImportLocalZIP(t.Context(), bytes.NewReader(data))
 	require.NoError(t, err)
 	require.True(t, imported.Portable)
 	require.Equal(t, "import", imported.TriggeredBy)
 	require.Empty(t, dumper.restored, "upload must not restore before password confirmation")
-	_, err = target.StartRestore(t.Context(), imported.ID)
+	_, err = target.StartRestore(t.Context(), imported.ID, true)
 	require.NoError(t, err)
 	target.wg.Wait()
 	require.Equal(t, dumper.dumpData, dumper.restored)
 	finished, err := target.GetBackupRecord(t.Context(), imported.ID)
 	require.NoError(t, err)
 	require.Equal(t, "completed", finished.RestoreStatus)
+	require.Equal(t, 1, restarts)
 }
 
 func TestBackupImportRejectsCorruptionAndUnsafeEntries(t *testing.T) {
@@ -115,15 +118,18 @@ func TestBackupImportRejectsCRCBeforeRestore(t *testing.T) {
 func TestBackupImportTamperingFailsBeforeDatabaseRestore(t *testing.T) {
 	t.Setenv("DATA_DIR", t.TempDir())
 	svc, dumper, _ := localBackupTestService(t)
+	restarts := 0
+	svc.restartAfterRestore = func() { restarts++ }
 	record, err := svc.ImportLocalZIP(t.Context(), bytes.NewReader(testBackupZIP(t, []byte("SELECT 1;"), nil, "")))
 	require.NoError(t, err)
 	meta := localZIPManifest{Format: "sub2api", Version: 1, SQLSHA256: strings.Repeat("0", 64), KeysInDatabase: true}
 	require.NoError(t, os.WriteFile(filepath.Join(record.LocalDirectory, record.FileName), testBackupZIP(t, []byte("SELECT changed;"), &meta, ""), 0600))
-	_, err = svc.StartRestore(t.Context(), record.ID)
+	_, err = svc.StartRestore(t.Context(), record.ID, true)
 	require.NoError(t, err)
 	svc.wg.Wait()
 	record, err = svc.GetBackupRecord(t.Context(), record.ID)
 	require.NoError(t, err)
 	require.Equal(t, "failed", record.RestoreStatus)
 	require.Empty(t, dumper.restored)
+	require.Zero(t, restarts)
 }
