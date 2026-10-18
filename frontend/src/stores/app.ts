@@ -7,6 +7,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Toast, ToastType, PublicSettings } from '@/types'
 import { i18n } from '@/i18n'
+import { setSiteTimeZone } from '@/utils/siteTimezone'
 import {
   checkUpdates as checkUpdatesAPI,
   type VersionInfo,
@@ -290,6 +291,7 @@ export const useAppStore = defineStore('app', () => {
    * Apply settings to store state (internal helper to avoid code duplication)
    */
   function applySettings(config: PublicSettings): void {
+    setSiteTimeZone(config.server_timezone)
     if (typeof window !== 'undefined') {
       window.__APP_CONFIG__ = { ...config }
     }

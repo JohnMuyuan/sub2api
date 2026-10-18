@@ -23,7 +23,7 @@
             <span class="font-medium">{{ pod.id }} <span class="text-xs text-gray-500">{{ pod.region || '—' }} · {{ pod.version || '—' }}</span></span>
             <span :class="pod.ready ? 'text-green-600' : 'text-amber-600'">{{ pod.ready ? text('心跳就绪', 'Heartbeat ready') : text('未就绪 / 失联', 'Not ready / offline') }}</span>
           </div>
-          <p class="mt-1 break-all text-xs text-gray-500">{{ pod.endpoint }} · {{ new Date(pod.at * 1000).toLocaleString() }}</p>
+          <p class="mt-1 break-all text-xs text-gray-500">{{ pod.endpoint }} · {{ new Date(pod.at * 1000).toLocaleString(undefined, { timeZone: getSiteTimeZone() }) }}</p>
           <div class="mt-2 flex flex-wrap items-center gap-2">
             <button type="button" class="btn btn-secondary btn-sm" :disabled="busy || approved(pod)" @click="approve(pod)">{{ approved(pod) ? text('地址已确认', 'Endpoint approved') : text('确认此地址', 'Approve endpoint') }}</button>
             <button type="button" class="btn btn-secondary btn-sm" :disabled="busy || !approved(pod)" @click="probe(pod.id)">{{ text('检查连接', 'Check connection') }}</button>
@@ -74,6 +74,7 @@ RUNTIME_SERVERLESS_ENDPOINT=https://pod.example.com</pre>
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { apiClient } from '@/api/client'

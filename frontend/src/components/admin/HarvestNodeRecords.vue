@@ -52,6 +52,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getCodexHarvestNodes, resetCodexHarvestNodes, type CodexHarvestNodePage } from '@/api/admin/codexHarvest'
@@ -68,7 +69,7 @@ const busy = computed(() => loading.value || resetting.value)
 const error = ref('')
 let requestId = 0
 let disposed = false
-const clock = (value: string | null) => value ? new Date(value).toLocaleString() : '—'
+const clock = (value: string | null) => value ? new Date(value).toLocaleString(undefined, { timeZone: getSiteTimeZone() }) : '—'
 const cooling = (value: string | null) => value && new Date(value).getTime() > Date.now() ? clock(value) : '—'
 const resultLabel = (result: string) => te(`admin.harvestFlow.results.${result}`) ? t(`admin.harvestFlow.results.${result}`) : result
 

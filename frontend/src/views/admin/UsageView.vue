@@ -1,5 +1,6 @@
 <template>
   <AppLayout>
+    <p class="mb-3 text-xs text-gray-500">{{ t('common.displayTimezone', { timezone: getSiteTimeZone() }) }}</p>
     <div class="space-y-6">
       <UsageStatsCards :stats="usageStats" />
       <!-- Charts Section -->
@@ -191,6 +192,8 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
+import { formatSiteDateInput } from '@/utils/siteTimezone'
 import { ref, reactive, computed, onMounted, onUnmounted, watch, provide } from 'vue'
 import { observerUsageAPI } from '@/api/observerUsage'
 import { observerUsageContext } from '@/components/admin/usage/observerUsageContext'
@@ -290,12 +293,7 @@ const handleRankingSelectUser = (userId: number, email: string) => {
 
 const granularityOptions = computed(() => [{ value: 'day', label: t('admin.dashboard.day') }, { value: 'hour', label: t('admin.dashboard.hour') }])
 // Use local timezone to avoid UTC timezone issues
-const formatLD = (d: Date) => {
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
+const formatLD = formatSiteDateInput
 const getLast24HoursRangeDates = (): { start: string; end: string } => {
   const end = new Date()
   const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)

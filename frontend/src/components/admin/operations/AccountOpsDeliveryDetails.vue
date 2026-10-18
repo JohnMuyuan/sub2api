@@ -20,6 +20,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { useI18n } from 'vue-i18n'
 import type { AccountOpsEvent } from '@/api/admin/accountOps'
 
@@ -27,6 +28,6 @@ defineProps<{ deliveries?: AccountOpsEvent['deliveries'] }>()
 const { t } = useI18n()
 const date = (value: string) => {
   const parsed = new Date(value)
-  return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString() : '-'
+  return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString(undefined, { timeZone: getSiteTimeZone() }) : '-'
 }
 </script>

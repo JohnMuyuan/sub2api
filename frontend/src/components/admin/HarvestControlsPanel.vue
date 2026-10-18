@@ -103,6 +103,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getCodexHarvestControls, saveCodexHarvestControls, type CodexHarvestControls, type CodexHarvestControlSnapshot, type CodexHarvestRuntime, type CodexHarvestSpeed } from '@/api/admin/codexHarvest'
@@ -147,7 +148,7 @@ const selectionLabel = computed(() => {
   return te(key) ? t(key) : reason
 })
 const selectedPreset = computed(() => Object.entries(remote.value?.presets || {}).find(([, speed]) => speedFields.value.every(f => speed[f.key] === draft.value?.speed[f.key]))?.[0] || 'custom')
-const clock = (value?: string | null) => value ? new Date(value).toLocaleTimeString() : '—'
+const clock = (value?: string | null) => value ? new Date(value).toLocaleTimeString(undefined, { timeZone: getSiteTimeZone() }) : '—'
 
 async function refresh() {
   if (saving.value || disposed) return

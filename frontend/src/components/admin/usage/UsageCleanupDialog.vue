@@ -116,6 +116,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { ref, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -220,7 +221,7 @@ const formatDateTime = (value?: string | null) => {
   if (!value) return '--'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
+  return date.toLocaleString(undefined, { timeZone: getSiteTimeZone() })
 }
 
 const formatRange = (task: UsageCleanupTask) => {
@@ -229,13 +230,7 @@ const formatRange = (task: UsageCleanupTask) => {
   return `${start} ~ ${end}`
 }
 
-const getUserTimezone = () => {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone
-  } catch {
-    return 'UTC'
-  }
-}
+const getUserTimezone = () => { return getSiteTimeZone() }
 
 const loadTasks = async () => {
   if (!props.show) return

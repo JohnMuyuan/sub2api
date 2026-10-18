@@ -169,6 +169,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, defineComponent, h, onMounted, reactive, ref, type PropType } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -261,13 +262,7 @@ function loadInitialSortState(): { sort_by: string; sort_order: 'asc' | 'desc' }
 
 const sortState = reactive(loadInitialSortState())
 
-function userTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone
-  } catch {
-    return 'UTC'
-  }
-}
+function userTimezone(): string { return getSiteTimeZone() }
 
 function buildParams(): ListAffiliateRecordsParams {
   return {

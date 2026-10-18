@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
@@ -113,7 +114,7 @@ const formatTime = (value: string) => {
   if (!value) return '-'
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value
-  return d.toLocaleString()
+  return d.toLocaleString(undefined, { timeZone: getSiteTimeZone() })
 }
 
 const getExtraString = (extra: Record<string, any> | undefined, key: string) => {

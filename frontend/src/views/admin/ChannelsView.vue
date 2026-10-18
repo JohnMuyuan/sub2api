@@ -628,6 +628,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -773,7 +774,7 @@ const compositePlatforms = platformOrder
 // ── Helpers ──
 function formatDate(value: string): string {
   if (!value) return '-'
-  return new Date(value).toLocaleDateString()
+  return new Date(value).toLocaleDateString(undefined, { timeZone: getSiteTimeZone() })
 }
 
 // ── Platform section helpers ──

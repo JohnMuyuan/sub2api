@@ -32,7 +32,7 @@
             {{ t('admin.proxies.qualityBaseLatency') }}:
             {{ typeof report.base_latency_ms === 'number' ? `${report.base_latency_ms}ms` : '-' }}
           </div>
-          <div>{{ t('admin.proxies.qualityCheckedAt') }}: {{ new Date(report.checked_at * 1000).toLocaleString() }}</div>
+          <div>{{ t('admin.proxies.qualityCheckedAt') }}: {{ new Date(report.checked_at * 1000).toLocaleString(undefined, { timeZone: getSiteTimeZone() }) }}</div>
         </div>
       </div>
 
@@ -77,6 +77,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { ProxyQualityCheckResult } from '@/types'

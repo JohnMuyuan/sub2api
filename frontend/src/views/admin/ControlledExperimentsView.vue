@@ -118,6 +118,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -146,7 +147,7 @@ function stateLabel(state: string) { const key = `controlledExperiments.state.${
 function channelLabel(channel: string) { const key = `controlledExperiments.${channel}`; return te(key) ? t(key) : channel }
 function preflightLabel(reason: string) { const key = `controlledExperiments.preflightReason.${reason}`; return te(key) ? t(key) : reason }
 function percentage(value: number | null | undefined) { return value == null ? '—' : `${(value * 100).toFixed(1)}%` }
-function date(value: string) { return new Date(value).toLocaleString() }
+function date(value: string) { return new Date(value).toLocaleString(undefined, { timeZone: getSiteTimeZone() }) }
 function routeLabel(index: number) { const route = report.value?.run.spec.routes[index]; return route ? `${index + 1} · #${route.account_id} ${route.account_name} · ${channelLabel(route.channel)}` : String(index + 1) }
 function preflightFor(index: number) { return report.value?.preflight.find(item => item.route_index === index) }
 function promptFor(id: string) { return report.value?.run.spec.tasks?.find(task => task.id === id)?.prompt }

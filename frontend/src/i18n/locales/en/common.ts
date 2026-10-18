@@ -1,5 +1,7 @@
 export default {
   common: {
+    followSystemTimezone: 'Follow site timezone',
+    displayTimezone: 'Display timezone: {timezone}',
     loading: 'Loading...',
     submitting: 'Submitting...',
     justNow: 'just now',

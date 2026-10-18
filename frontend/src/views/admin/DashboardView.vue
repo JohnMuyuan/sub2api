@@ -348,6 +348,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatSiteDateInput } from '@/utils/siteTimezone'
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -419,9 +420,7 @@ let rankingLoadSeq = 0
 const rankingLimit = 12
 
 // Helper function to format date in local timezone
-const formatLocalDate = (date: Date): string => {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
+const formatLocalDate = formatSiteDateInput
 
 const getLast24HoursRangeDates = (): { start: string; end: string } => {
   const end = new Date()

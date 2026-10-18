@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import QuotaDimensionRow from './QuotaDimensionRow.vue'
@@ -118,14 +119,14 @@ const weeklyFixedHint = computed(() => {
   return t('admin.accounts.quotaWeeklyLimitHintFixed', {
     day: t('admin.accounts.dayOfWeek.' + dayKey),
     hour: String(props.weeklyResetHour ?? 0).padStart(2, '0'),
-    timezone: props.resetTimezone || 'UTC',
+    timezone: props.resetTimezone || getSiteTimeZone(),
   })
 })
 
 const dailyFixedHint = computed(() =>
   t('admin.accounts.quotaDailyLimitHintFixed', {
     hour: String(props.dailyResetHour ?? 0).padStart(2, '0'),
-    timezone: props.resetTimezone || 'UTC',
+    timezone: props.resetTimezone || getSiteTimeZone(),
   })
 )
 </script>

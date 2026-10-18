@@ -4228,7 +4228,13 @@ const nowUTC = `to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"
 // Supports both rolling (24h from start) and fixed (pre-computed reset_at) modes.
 const dailyExpiredExpr = `(
 	CASE WHEN COALESCE(extra->>'quota_daily_reset_mode', 'rolling') = 'fixed'
-	THEN NOW() >= COALESCE((extra->>'quota_daily_reset_at')::timestamptz, '1970-01-01'::timestamptz)
+	THEN CASE WHEN NULLIF(extra->>'quota_reset_timezone', '') IS NULL
+        -- A site-clock change can make a stored reset_at obsolete. Derive
+        -- the current calendar boundary from the connection's timezone.
+        THEN COALESCE((extra->>'quota_daily_start')::timestamptz, '1970-01-01'::timestamptz)
+             < ((` + nextDailyResetAtExpr + `)::timestamptz - '1 day'::interval)
+        ELSE NOW() >= COALESCE((extra->>'quota_daily_reset_at')::timestamptz, '1970-01-01'::timestamptz)
+        END
 	ELSE COALESCE((extra->>'quota_daily_start')::timestamptz, '1970-01-01'::timestamptz)
 		+ '24 hours'::interval <= NOW()
 	END
@@ -4237,7 +4243,13 @@ const dailyExpiredExpr = `(
 // weeklyExpiredExpr is a SQL expression that evaluates to TRUE when weekly quota period has expired.
 const weeklyExpiredExpr = `(
 	CASE WHEN COALESCE(extra->>'quota_weekly_reset_mode', 'rolling') = 'fixed'
-	THEN NOW() >= COALESCE((extra->>'quota_weekly_reset_at')::timestamptz, '1970-01-01'::timestamptz)
+	THEN CASE WHEN NULLIF(extra->>'quota_reset_timezone', '') IS NULL
+        -- A site-clock change can make a stored reset_at obsolete. Derive
+        -- the current calendar boundary from the connection's timezone.
+        THEN COALESCE((extra->>'quota_weekly_start')::timestamptz, '1970-01-01'::timestamptz)
+             < ((` + nextWeeklyResetAtExpr + `)::timestamptz - '7 days'::interval)
+        ELSE NOW() >= COALESCE((extra->>'quota_weekly_reset_at')::timestamptz, '1970-01-01'::timestamptz)
+        END
 	ELSE COALESCE((extra->>'quota_weekly_start')::timestamptz, '1970-01-01'::timestamptz)
 		+ '168 hours'::interval <= NOW()
 	END
@@ -4251,20 +4263,20 @@ const nextDailyResetAtExpr = `(
 	THEN to_char((
 		-- Compute today's reset point in the configured timezone, then pick next future one
 		CASE WHEN NOW() >= (
-			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
+			date_trunc('day', NOW() AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone')))
 			+ (COALESCE((extra->>'quota_daily_reset_hour')::int, 0) || ' hours')::interval
-		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
+		) AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone'))
 		-- NOW() is at or past today's reset point → next reset is tomorrow
 		THEN (
-			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
+			date_trunc('day', NOW() AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone')))
 			+ (COALESCE((extra->>'quota_daily_reset_hour')::int, 0) || ' hours')::interval
 			+ '1 day'::interval
-		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
+		) AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone'))
 		-- NOW() is before today's reset point → next reset is today
 		ELSE (
-			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
+			date_trunc('day', NOW() AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone')))
 			+ (COALESCE((extra->>'quota_daily_reset_hour')::int, 0) || ' hours')::interval
-		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
+		) AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone'))
 		END
 	) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 	ELSE NULL END
@@ -4284,28 +4296,28 @@ const nextWeeklyResetAtExpr = `(
 		WHEN (
 			-- days_forward = (target_day - current_day + 7) % 7
 			(COALESCE((extra->>'quota_weekly_reset_day')::int, 1)
-			 - EXTRACT(DOW FROM NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))::int
+			 - EXTRACT(DOW FROM NOW() AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone')))::int
 			 + 7) % 7
 		) = 0 AND NOW() >= (
-			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
+			date_trunc('day', NOW() AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone')))
 			+ (COALESCE((extra->>'quota_weekly_reset_hour')::int, 0) || ' hours')::interval
-		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
+		) AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone'))
 		-- Same weekday and past reset hour → next week
 		THEN (
-			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
+			date_trunc('day', NOW() AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone')))
 			+ (COALESCE((extra->>'quota_weekly_reset_hour')::int, 0) || ' hours')::interval
 			+ '7 days'::interval
-		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
+		) AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone'))
 		ELSE (
 			-- Advance to target weekday this week (or next if days_forward > 0)
-			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
+			date_trunc('day', NOW() AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone')))
 			+ (COALESCE((extra->>'quota_weekly_reset_hour')::int, 0) || ' hours')::interval
 			+ ((
 				(COALESCE((extra->>'quota_weekly_reset_day')::int, 1)
-				 - EXTRACT(DOW FROM NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))::int
+				 - EXTRACT(DOW FROM NOW() AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone')))::int
 				 + 7) % 7
 			) || ' days')::interval
-		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
+		) AT TIME ZONE COALESCE(NULLIF(extra->>'quota_reset_timezone', ''), current_setting('TimeZone'))
 		END
 	) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 	ELSE NULL END

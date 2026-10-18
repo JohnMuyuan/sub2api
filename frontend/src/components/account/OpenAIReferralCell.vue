@@ -89,6 +89,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Account } from '@/types'
@@ -119,7 +120,7 @@ const count = computed(() => {
 const countDisplay = computed(() => count.value ?? '—')
 const countTitle = computed(() => {
   const time = eligibility.value?.fetched_at
-  return time ? t('admin.accounts.openaiReferral.checkedAt', { time: new Date(time * 1000).toLocaleString() }) : t('admin.accounts.openaiReferral.queryHint')
+  return time ? t('admin.accounts.openaiReferral.checkedAt', { time: new Date(time * 1000).toLocaleString(undefined, { timeZone: getSiteTimeZone() }) }) : t('admin.accounts.openaiReferral.queryHint')
 })
 const programLabel = computed(() => t(eligibility.value?.program_id === 'codex_referral_workspace'
   ? 'admin.accounts.openaiReferral.workspace' : 'admin.accounts.openaiReferral.personal'))

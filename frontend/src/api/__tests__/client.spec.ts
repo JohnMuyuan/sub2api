@@ -91,6 +91,16 @@ describe('API Client', () => {
       expect(config.params).toHaveProperty('timezone')
     })
 
+    it('uses the effective site timezone instead of the browser clock for usage queries', async () => {
+      const { setSiteTimeZone } = await import('@/utils/siteTimezone')
+      setSiteTimeZone('Asia/Taipei')
+      const adapter = vi.fn().mockResolvedValue({ status: 200, data: { code: 0, data: {} }, headers: {}, config: {}, statusText: 'OK' })
+      apiClient.defaults.adapter = adapter
+      await apiClient.get('/usage', { params: { timezone: 'America/New_York' } })
+      expect(adapter.mock.calls[0][0].params.timezone).toBe('Asia/Taipei')
+      setSiteTimeZone()
+    })
+
     it('POST 请求不附加 timezone 参数', async () => {
       const adapter = vi.fn().mockResolvedValue({
         status: 200,

@@ -1,5 +1,6 @@
 <template>
   <AppLayout>
+    <p class="mb-3 text-xs text-gray-500">{{ t('common.displayTimezone', { timezone: getSiteTimeZone() }) }}</p>
     <div class="space-y-6">
       <UsageStatsCards :stats="usageStats" :show-account-cost="false" :strike-standard-cost="true" />
 
@@ -220,6 +221,8 @@
 </template>
 
 <script setup lang="ts">
+import { getSiteTimeZone } from '@/utils/siteTimezone'
+import { formatSiteDateInput } from '@/utils/siteTimezone'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -333,8 +336,7 @@ let chartReqSeq = 0
 let statsReqSeq = 0
 let modelStatsReqSeq = 0
 
-const formatLocalDate = (date: Date): string =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const formatLocalDate = formatSiteDateInput
 
 const getLast24HoursRangeDates = () => {
   const end = new Date()

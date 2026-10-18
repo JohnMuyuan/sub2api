@@ -1,5 +1,7 @@
 export default {
   common: {
+    followSystemTimezone: '跟随全站时区',
+    displayTimezone: '显示时区：{timezone}',
     loading: '加载中...',
     submitting: '提交中...',
     justNow: '刚刚',

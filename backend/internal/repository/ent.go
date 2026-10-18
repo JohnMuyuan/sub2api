@@ -16,8 +16,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/migrations"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 	"github.com/lib/pq"
 )
 
@@ -104,31 +102,20 @@ func isTransientDatabaseInitializationError(err error) bool {
 func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	// 优先初始化时区设置，确保所有时间操作使用统一的时区。
 	// 这对于跨时区部署和日志时间戳的一致性至关重要。
+	if cfg.StartupTimezone == "" {
+		cfg.StartupTimezone = cfg.Timezone
+		if cfg.StartupTimezone == "" {
+			cfg.StartupTimezone = "Asia/Shanghai"
+		}
+	}
 	if err := timezone.Init(cfg.Timezone); err != nil {
 		return nil, nil, err
 	}
 
-	// 构建包含时区信息的数据库连接字符串 (DSN)。
-	// 时区信息会传递给 PostgreSQL，确保数据库层面的时间处理正确。
-	dsn := cfg.Database.DSNWithTimezone(cfg.Timezone)
-
-	// 使用 Ent 的 SQL 驱动打开 PostgreSQL 连接。
-	// dialect.Postgres 指定使用 PostgreSQL 方言进行 SQL 生成。
-	var drv *entsql.Driver
-	if cfg.Server.EnableServerTiming {
-		connector, err := pq.NewConnector(dsn)
-		if err != nil {
-			return nil, nil, err
-		}
-		drv = entsql.OpenDB(dialect.Postgres, sql.OpenDB(newServerTimingConnector(connector)))
-	} else {
-		var err error
-		drv, err = entsql.Open(dialect.Postgres, dsn)
-		if err != nil {
-			return nil, nil, err
-		}
+	drv, err := openConfiguredDatabase(cfg)
+	if err != nil {
+		return nil, nil, err
 	}
-	applyDBPoolSettings(drv.DB(), cfg)
 
 	// 确保数据库 schema 已准备就绪。
 	// SQL 迁移文件是 schema 的权威来源（source of truth）。
@@ -140,6 +127,24 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	}); err != nil {
 		_ = drv.Close() // 迁移失败时关闭驱动，避免资源泄露
 		return nil, nil, err
+	}
+
+	// Read after migrations, before services or workers start. Reopen the entire
+	// pool so every connection uses the same PostgreSQL timezone as Go.
+	changed, err := loadStoredSystemTimezone(migrationCtx, drv.DB(), cfg)
+	if err != nil {
+		_ = drv.Close()
+		return nil, nil, err
+	}
+	if changed {
+		_ = drv.Close()
+		if err := timezone.Init(cfg.Timezone); err != nil {
+			return nil, nil, err
+		}
+		drv, err = openConfiguredDatabase(cfg)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	// 创建 Ent 客户端，绑定到已配置的数据库驱动。
