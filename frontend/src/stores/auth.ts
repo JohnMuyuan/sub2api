@@ -513,6 +513,7 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     setToken,
     logout,
+    clearAuth,
     checkAuth,
     refreshUser,
     setPendingAuthSession,

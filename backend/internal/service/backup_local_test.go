@@ -38,7 +38,7 @@ func TestLocalZIPBackupRoundTripAndDirectoryChange(t *testing.T) {
 	require.NotEmpty(t, record.ExpiresAt)
 	archive, err := zip.OpenReader(filepath.Join(directory, record.FileName))
 	require.NoError(t, err)
-	require.Len(t, archive.File, 1)
+	require.Len(t, archive.File, 2)
 	require.Equal(t, "database.sql", archive.File[0].Name)
 	reader, err := archive.File[0].Open()
 	require.NoError(t, err)

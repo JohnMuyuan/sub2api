@@ -14,6 +14,9 @@ const {
   deleteBackup,
   listBackups,
   getDownloadURL,
+  importLocalBackup,
+  restoreBackup,
+  getBackup,
 } = vi.hoisted(() => ({
   getLocalConfig: vi.fn(),
   updateLocalConfig: vi.fn(),
@@ -25,6 +28,9 @@ const {
   deleteBackup: vi.fn(),
   listBackups: vi.fn(),
   getDownloadURL: vi.fn(),
+  importLocalBackup: vi.fn(),
+  restoreBackup: vi.fn(),
+  getBackup: vi.fn(),
 }))
 
 vi.mock('@/api', () => ({
@@ -42,15 +48,17 @@ vi.mock('@/api', () => ({
       updateSchedule,
       createBackup,
       listBackups,
-      getBackup: vi.fn(),
+      getBackup,
       deleteBackup,
       getDownloadURL,
-      restoreBackup: vi.fn(),
+      restoreBackup,
+      importLocalBackup,
     },
   },
 }))
 
 vi.mock('@/stores', () => ({
+  useAuthStore: () => ({ clearAuth: vi.fn() }),
   useAppStore: () => ({
     showError: vi.fn(),
     showSuccess: vi.fn(),
@@ -99,6 +107,48 @@ function mountBackupView() {
 }
 
 describe('admin BackupView', () => {
+  it('validates uploaded ZIP before confirming restore with an automatic restart', async () => {
+    vi.useFakeTimers()
+    try {
+      const imported = { ...baseRecord('uploaded'), storage: 'local', portable: true }
+      importLocalBackup.mockResolvedValue(imported)
+      restoreBackup.mockResolvedValue({ ...imported, restore_status: 'running' })
+      getBackup.mockResolvedValue({ ...imported, restore_status: 'completed' })
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      vi.spyOn(window, 'prompt').mockReturnValue('current-admin-password')
+      const wrapper = mountBackupView()
+      await flushPromises()
+      const file = new File(['zip-data'], 'backup.zip', { type: 'application/zip' })
+      const input = wrapper.get('#backup-upload-file')
+      Object.defineProperty(input.element, 'files', { value: [file] })
+      await input.trigger('change')
+      await wrapper.get('[data-testid="backup-upload-restore"] button').trigger('click')
+      await flushPromises()
+      expect(importLocalBackup).toHaveBeenCalledWith(file)
+      expect(restoreBackup).toHaveBeenCalledWith('uploaded', 'current-admin-password', true)
+      await vi.advanceTimersByTimeAsync(2000)
+      await flushPromises()
+      expect(wrapper.find('[data-testid="backup-restore-restart"]').exists()).toBe(true)
+    } finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    }
+  })
+
+  it('requires explicit confirmation for legacy uploads and does not restore on cancel', async () => {
+    importLocalBackup.mockResolvedValue({ ...baseRecord('legacy'), portable: false })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = mountBackupView()
+    await flushPromises()
+    const input = wrapper.get('#backup-upload-file')
+    Object.defineProperty(input.element, 'files', { value: [new File(['zip'], 'legacy.zip')] })
+    await input.trigger('change')
+    await wrapper.get('[data-testid="backup-upload-restore"] button').trigger('click')
+    await flushPromises()
+    expect(confirm).toHaveBeenCalledWith('admin.backup.upload.legacyWarning')
+    expect(restoreBackup).not.toHaveBeenCalled()
+  })
+
   it('starts a manual ZIP backup without S3', async () => {
     const wrapper = mountBackupView()
     await flushPromises()
@@ -128,6 +178,9 @@ describe('admin BackupView', () => {
   })
 
   beforeEach(() => {
+    importLocalBackup.mockReset()
+    restoreBackup.mockReset()
+    getBackup.mockReset()
     getLocalConfig.mockReset().mockResolvedValue({ directory: '/app/backups' })
     updateLocalConfig.mockReset().mockResolvedValue({ directory: '/app/backups' })
     createBackup.mockReset().mockResolvedValue({ ...baseRecord('local-new'), storage: 'local', status: 'completed' })

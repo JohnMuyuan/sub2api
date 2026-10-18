@@ -1909,7 +1909,7 @@ type TotpConfig struct {
 	// EncryptionKey 用于加密 TOTP 密钥的 AES-256 密钥（32 字节 hex 编码）
 	// 如果为空，将自动生成一个随机密钥（仅适用于开发环境）
 	EncryptionKey string `mapstructure:"encryption_key"`
-	// EncryptionKeyConfigured 标记加密密钥是否为手动配置（非自动生成）
+	// EncryptionKeyConfigured 标记密钥已有持久来源（手动配置，或数据库引导完成后持久化）。
 	// 只有手动配置了密钥才允许在管理后台启用 TOTP 功能
 	EncryptionKeyConfigured bool `mapstructure:"-"`
 }
