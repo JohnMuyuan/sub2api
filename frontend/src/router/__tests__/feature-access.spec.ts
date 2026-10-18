@@ -15,6 +15,7 @@ const authStore = vi.hoisted(() => ({
   isAuthenticated: true,
   isAdmin: false,
   isObserver: false,
+  isAccountViewer: false,
   canManageAccounts: false,
   isSimpleMode: false,
   hasPendingAuthSession: false,
@@ -118,11 +119,31 @@ describe('feature route guard', () => {
     authStore.isAuthenticated = true
     authStore.isAdmin = false
     authStore.isObserver = false
+    authStore.isAccountViewer = false
     appStore.backendModeEnabled = false
     authStore.isSimpleMode = false
     appStore.publicSettingsLoaded = false
     appStore.cachedPublicSettings = null
     appStore.fetchPublicSettings.mockReset()
+  })
+
+  it('confines account viewers to the safe pool page, including backend mode', async () => {
+    authStore.isAccountViewer = true
+    for (const backend of [false, true]) {
+      appStore.backendModeEnabled = backend
+      const own = runGuard({ requiresAccountViewing: true }, '/account-pool')
+      await own.navigation
+      expect(own.next).toHaveBeenCalledWith()
+      for (const path of ['/admin/accounts', '/usage', '/keys', '/dashboard']) {
+        const other = runGuard({}, path)
+        await other.navigation
+        expect(other.next).toHaveBeenCalledWith('/account-pool')
+      }
+    }
+    authStore.isAccountViewer = false
+    const user = runGuard({ requiresAccountViewing: true }, '/account-pool')
+    await user.navigation
+    expect(user.next).toHaveBeenCalledWith('/dashboard')
   })
 
   it('allows observers own usage in backend mode without opening other user or admin pages', async () => {

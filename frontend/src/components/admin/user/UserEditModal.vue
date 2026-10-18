@@ -37,7 +37,7 @@
           :searchable="false"
         />
       </div>
-      <ObserverGroupSelector v-if="form.role === 'observer'" v-model="form.observer_group_ids" />
+      <ObserverGroupSelector v-if="form.role === 'observer' || form.role === 'account_viewer'" v-model="form.observer_group_ids" :read-only="form.role === 'account_viewer'" />
       <fieldset v-if="promotingObserver" class="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-dark-600" data-test="observer-setup">
         <legend class="px-1 text-sm font-medium">{{ t('admin.users.observerSetup.title') }}</legend>
         <label class="flex items-start gap-2 text-sm">
@@ -128,6 +128,7 @@ const resetObserverSetup = () => Object.assign(observerSetup, { create_dedicated
 const roleOptions = computed(() => [
   { value: 'user', label: t('admin.users.roles.user') },
   { value: 'observer', label: t('admin.users.roles.observer') },
+  { value: 'account_viewer', label: t('admin.users.roles.account_viewer') },
   { value: 'admin', label: t('admin.users.roles.admin') }
 ])
 const form = reactive({

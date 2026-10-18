@@ -52,6 +52,7 @@ jobs:
         working-directory: backend
         run: |
           go test -tags unit ./internal/service -run 'Test(UpdateService|LocalZIP|Backup|Restore|AccountRequestTimezone|HTTPUpstream)' -count=1
+          go test -tags unit ./internal/service ./internal/server/middleware ./internal/handler/admin -run TestAccountViewer -count=1
           go test ./internal/reauthruntime -count=1
           go test ./internal/repository -run 'Test(EnsureBootstrapSecrets|PgDumperRestoreStopsOnSQLFailure)' -count=1
       - name: Verify custom release notes and README merges

@@ -54,6 +54,9 @@ func RegisterAdminRoutes(
 		// 分组管理
 		registerGroupRoutes(admin, h)
 
+		admin.GET("/account-viewer/accounts", h.Admin.Account.ListForAccountViewer)
+		admin.GET("/account-viewer/accounts/:id/stats", h.Admin.Account.StatsForAccountViewer)
+
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
 

@@ -34,7 +34,12 @@ func (h *AccountHandler) AuthorizeObserver(c *gin.Context) {
 		c.Next()
 		return
 	}
-	if !middleware.ObserverAccountRouteAllowed(c.Request.Method, c.FullPath()) {
+	role, _ := middleware.GetUserRoleFromContext(c)
+	routeAllowed := middleware.ObserverAccountRouteAllowed(c.Request.Method, c.FullPath())
+	if role == service.RoleAccountViewer {
+		routeAllowed = middleware.AccountViewerRouteAllowed(c.Request.Method, c.FullPath())
+	}
+	if !routeAllowed {
 		response.ErrorFrom(c, service.ErrObserverScope)
 		c.Abort()
 		return
