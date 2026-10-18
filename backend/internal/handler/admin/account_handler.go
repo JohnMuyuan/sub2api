@@ -2768,6 +2768,11 @@ func (h *AccountHandler) GetTempUnschedulable(c *gin.Context) {
 		return
 	}
 
+	if service.IsAccountViewerScope(c.Request.Context()) {
+		redacted := *state
+		redacted.ErrorMessage = service.RedactAccountViewerText(redacted.ErrorMessage)
+		state = &redacted
+	}
 	response.Success(c, gin.H{
 		"active": true,
 		"state":  state,

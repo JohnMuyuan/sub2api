@@ -1012,5 +1012,38 @@ func AccountForObserver(ctx context.Context, account *Account) *Account {
 		}
 	}
 	account.AccountGroups = links
+	if service.IsAccountViewerScope(ctx) {
+		redactAccountForViewer(account)
+	}
 	return account
+}
+
+// redactAccountForViewer strips management-only fields and masks emails for the
+// read-only account viewer. Maps are rebuilt, never edited in place: the DTO may
+// share Credentials/Extra/Group maps with cached service accounts.
+func redactAccountForViewer(account *Account) {
+	account.Name = service.RedactAccountViewerText(account.Name)
+	account.Notes = nil
+	account.ProxyID = nil
+	account.Proxy = nil
+	account.ProxyFallbackOriginID = nil
+	account.ProxyFallbackOriginName = nil
+	account.CustomBaseURL = nil
+	account.ParentEmail = ""
+	account.ParentChatGPTAccountID = ""
+	account.ErrorMessage = service.RedactAccountViewerText(account.ErrorMessage)
+	account.TempUnschedulableReason = service.RedactAccountViewerText(account.TempUnschedulableReason)
+	credentials, _ := RedactCredentials(account.Credentials)
+	account.Credentials, _ = service.RedactAccountViewerValue(credentials).(map[string]any)
+	account.Extra, _ = service.RedactAccountViewerValue(account.Extra).(map[string]any)
+	groups := make([]*Group, 0, len(account.Groups))
+	for _, group := range account.Groups {
+		groups = append(groups, &Group{ID: group.ID, Name: service.RedactAccountViewerText(group.Name), Platform: group.Platform, Status: group.Status})
+	}
+	account.Groups = groups
+	links := make([]AccountGroup, 0, len(account.AccountGroups))
+	for _, link := range account.AccountGroups {
+		links = append(links, AccountGroup{AccountID: link.AccountID, GroupID: link.GroupID, Priority: link.Priority, CreatedAt: link.CreatedAt})
+	}
+	account.AccountGroups = links
 }

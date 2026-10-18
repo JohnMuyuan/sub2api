@@ -19,7 +19,8 @@ declare module 'vue-router' {
      */
     requiresAdmin?: boolean
     requiresAccountManagement?: boolean
-    requiresAccountViewing?: boolean
+    /** Subtitle i18n key shown instead of descriptionKey to the read-only account role */
+    viewerDescriptionKey?: string
     requiresRequestCapture?: boolean
 
     /**

@@ -583,6 +583,14 @@ func (h *GroupHandler) GetAll(c *gin.Context) {
 		}
 		groups = visible
 	}
+	if service.IsAccountViewerScope(c.Request.Context()) {
+		viewerGroups := make([]dto.Group, 0, len(groups))
+		for _, group := range groups {
+			viewerGroups = append(viewerGroups, dto.Group{ID: group.ID, Name: service.RedactAccountViewerText(group.Name), Platform: group.Platform, Status: group.Status})
+		}
+		response.Success(c, viewerGroups)
+		return
+	}
 	if h.isSimpleMode() {
 		simpleGroups := make([]simpleModeGroupResponse, 0, len(groups))
 		for i := range groups {

@@ -202,9 +202,10 @@ func validateJWTForAdmin(
 	}
 
 	// 检查管理员权限
-	if (user.Role == service.RoleObserver && ObserverAccountRouteAllowed(c.Request.Method, c.FullPath())) ||
-		(user.Role == service.RoleAccountViewer && AccountViewerRouteAllowed(c.Request.Method, c.FullPath())) {
+	if user.Role == service.RoleObserver && ObserverAccountRouteAllowed(c.Request.Method, c.FullPath()) {
 		c.Request = c.Request.WithContext(service.WithObserverScope(c.Request.Context(), user.ObserverGroupIDs))
+	} else if user.Role == service.RoleAccountViewer && AccountViewerRouteAllowed(c.Request.Method, c.FullPath()) {
+		c.Request = c.Request.WithContext(service.WithAccountViewerScope(c.Request.Context(), user.ObserverGroupIDs))
 	} else if !user.IsAdmin() {
 		AbortWithError(c, 403, "FORBIDDEN", "Admin access required")
 		return false

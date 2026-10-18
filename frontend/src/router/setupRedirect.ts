@@ -1,12 +1,12 @@
 export function resolveCompletedSetupRedirectPath(
   isAuthenticated: boolean,
   isAdmin: boolean,
-  isObserver = false
+  canViewAccounts = false
 ): string {
   if (!isAuthenticated) {
     return '/login'
   }
 
   if (isAdmin) return '/admin/dashboard'
-  return isObserver ? '/admin/accounts' : '/dashboard'
+  return canViewAccounts ? '/admin/accounts' : '/dashboard'
 }

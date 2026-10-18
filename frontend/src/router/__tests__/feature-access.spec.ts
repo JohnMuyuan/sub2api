@@ -17,6 +17,7 @@ const authStore = vi.hoisted(() => ({
   isObserver: false,
   isAccountViewer: false,
   canManageAccounts: false,
+  canViewAccounts: false,
   isSimpleMode: false,
   hasPendingAuthSession: false,
 }))
@@ -120,6 +121,8 @@ describe('feature route guard', () => {
     authStore.isAdmin = false
     authStore.isObserver = false
     authStore.isAccountViewer = false
+    authStore.canManageAccounts = false
+    authStore.canViewAccounts = false
     appStore.backendModeEnabled = false
     authStore.isSimpleMode = false
     appStore.publicSettingsLoaded = false
@@ -127,21 +130,32 @@ describe('feature route guard', () => {
     appStore.fetchPublicSettings.mockReset()
   })
 
-  it('confines account viewers to the safe pool page, including backend mode', async () => {
+  it('lets account viewers use the account page and user pages, but not admin pages', async () => {
     authStore.isAccountViewer = true
-    for (const backend of [false, true]) {
-      appStore.backendModeEnabled = backend
-      const own = runGuard({ requiresAccountViewing: true }, '/account-pool')
+    authStore.canViewAccounts = true
+    const accounts = runGuard({ requiresAccountManagement: true }, '/admin/accounts')
+    await accounts.navigation
+    expect(accounts.next).toHaveBeenCalledWith()
+    for (const path of ['/keys', '/dashboard', '/usage']) {
+      const own = runGuard({}, path)
       await own.navigation
       expect(own.next).toHaveBeenCalledWith()
-      for (const path of ['/admin/accounts', '/usage', '/keys', '/dashboard']) {
-        const other = runGuard({}, path)
-        await other.navigation
-        expect(other.next).toHaveBeenCalledWith('/account-pool')
-      }
     }
-    authStore.isAccountViewer = false
-    const user = runGuard({ requiresAccountViewing: true }, '/account-pool')
+    const admin = runGuard({ requiresAdmin: true }, '/admin/users')
+    await admin.navigation
+    expect(admin.next).toHaveBeenCalledWith('/dashboard')
+
+    appStore.backendModeEnabled = true
+    const backendAccounts = runGuard({ requiresAccountManagement: true }, '/admin/accounts')
+    await backendAccounts.navigation
+    expect(backendAccounts.next).toHaveBeenCalledWith()
+    const backendKeys = runGuard({}, '/keys')
+    await backendKeys.navigation
+    expect(backendKeys.next).toHaveBeenCalledWith('/login')
+  })
+
+  it('keeps the account page closed to regular users', async () => {
+    const user = runGuard({ requiresAccountManagement: true }, '/admin/accounts')
     await user.navigation
     expect(user.next).toHaveBeenCalledWith('/dashboard')
   })

@@ -1,6 +1,7 @@
 <template>
   <div class="grid min-w-0 w-full grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
     <SearchInput
+      v-if="!hideSearch"
       :model-value="searchQuery"
       :placeholder="t('admin.accounts.searchAccounts')"
       class="col-span-2 min-w-0 w-full sm:w-56"
@@ -19,7 +20,7 @@
 import { computed } from 'vue'; import { useI18n } from 'vue-i18n'; import Select from '@/components/common/Select.vue'; import SearchInput from '@/components/common/SearchInput.vue'
 import type { AdminGroup } from '@/types'
 import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
-const props = defineProps<{ searchQuery: string; filters: Record<string, any>; groups?: AdminGroup[] }>()
+const props = defineProps<{ searchQuery: string; filters: Record<string, any>; groups?: AdminGroup[]; hideSearch?: boolean }>()
 const emit = defineEmits(['update:searchQuery', 'update:filters', 'change']); const { t } = useI18n()
 const updatePlatform = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, platform: value }) }
 const updateType = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, type: value }) }

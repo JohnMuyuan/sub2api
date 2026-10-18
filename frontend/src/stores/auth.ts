@@ -99,6 +99,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isObserver = computed(() => user.value?.role === 'observer')
   const isAccountViewer = computed(() => user.value?.role === 'account_viewer')
   const canManageAccounts = computed(() => isAdmin.value || isObserver.value)
+  // The account viewer shares the account page with observers but only reads.
+  const canViewAccounts = computed(() => canManageAccounts.value || isAccountViewer.value)
 
   const isSimpleMode = computed(() => runMode.value === 'simple')
   const hasPendingAuthSession = computed(() => pendingAuthSession.value !== null)
@@ -505,6 +507,7 @@ export const useAuthStore = defineStore('auth', () => {
     isObserver,
     isAccountViewer,
     canManageAccounts,
+    canViewAccounts,
     isSimpleMode,
     hasPendingAuthSession,
 

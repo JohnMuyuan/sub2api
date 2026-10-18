@@ -338,7 +338,8 @@ const pageTitle = computed(() => {
 })
 
 const pageDescription = computed(() => {
-  const descKey = routeMetaKeys.value.descriptionKey
+  const viewerDescKey = authStore.isAccountViewer ? (route.meta.viewerDescriptionKey as string | undefined) : undefined
+  const descKey = viewerDescKey || routeMetaKeys.value.descriptionKey
   if (descKey) {
     return t(descKey)
   }

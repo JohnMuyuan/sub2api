@@ -118,6 +118,7 @@
           {{ t('common.close') }}
         </button>
         <button
+          v-if="!readOnly"
           type="button"
           class="btn btn-primary"
           :disabled="!isActive || resetting"
@@ -162,6 +163,7 @@ import { formatDateTime } from '@/utils/format'
 const props = defineProps<{
   show: boolean
   account: Account | null
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{

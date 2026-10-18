@@ -121,7 +121,34 @@ var observerAccountRoutes = map[string]struct{}{
 }
 
 // Separate allowlist: a GET on an admin route is not necessarily safe (exports
-// and some quota endpoints reveal credentials or trigger upstream probes).
+// and the single-account detail reveal credentials). The account viewer shares
+// the observer's account page but may only read state, query quota windows,
+// test connections and view statistics.
 func AccountViewerRouteAllowed(method, route string) bool {
-	return method == "GET" && (route == "/api/v1/admin/account-viewer/accounts" || route == "/api/v1/admin/account-viewer/accounts/:id/stats")
+	_, ok := accountViewerRoutes[method+" "+route]
+	return ok
+}
+
+var accountViewerRoutes = map[string]struct{}{
+	"GET /api/v1/admin/accounts/management-capabilities":         {},
+	"GET /api/v1/admin/accounts":                                 {},
+	"GET /api/v1/admin/accounts/upstream-billing-rates":          {},
+	"GET /api/v1/admin/accounts/upstream-billing-probe/settings": {},
+	"GET /api/v1/admin/accounts/:id/temp-unschedulable":          {},
+	"POST /api/v1/admin/accounts/:id/test":                       {},
+	"GET /api/v1/admin/accounts/:id/models":                      {},
+	"GET /api/v1/admin/accounts/:id/stats":                       {},
+	"GET /api/v1/admin/accounts/:id/usage":                       {},
+	"GET /api/v1/admin/accounts/:id/today-stats":                 {},
+	"POST /api/v1/admin/accounts/usage/batch":                    {},
+	"POST /api/v1/admin/accounts/today-stats/batch":              {},
+	"GET /api/v1/admin/accounts/:id/ollama-cloud-usage":          {},
+	"POST /api/v1/admin/accounts/:id/ollama-cloud-usage/refresh": {},
+	"GET /api/v1/admin/accounts/:id/opencode-go-usage":           {},
+	"POST /api/v1/admin/accounts/:id/opencode-go-usage/refresh":  {},
+	"GET /api/v1/admin/openai/accounts/:id/quota":                {},
+	"GET /api/v1/admin/grok/accounts/:id/quota":                  {},
+	"GET /api/v1/admin/cn-providers/accounts/:id/quota":          {},
+	"GET /api/v1/admin/cn-providers/accounts/:id/balance":        {},
+	"GET /api/v1/admin/groups/all":                               {},
 }

@@ -19,11 +19,6 @@ import { resolveRouteDocumentTitle } from './title'
  * Route definitions with lazy loading
  */
 const routes: RouteRecordRaw[] = [
-  {
-    path: '/account-pool', name: 'AccountPoolReadOnly',
-    component: () => import('@/views/user/AccountPoolReadOnlyView.vue'),
-    meta: { requiresAuth: true, requiresAccountViewing: true, title: 'Account pool', titleKey: 'accountViewer.title' }
-  },
   // ==================== Setup Routes ====================
   {
     path: '/setup',
@@ -586,7 +581,8 @@ const routes: RouteRecordRaw[] = [
       requiresAccountManagement: true,
       title: 'Account Management',
       titleKey: 'admin.accounts.title',
-      descriptionKey: 'admin.accounts.description'
+      descriptionKey: 'admin.accounts.description',
+      viewerDescriptionKey: 'admin.accounts.viewerDescription'
     }
   },
   { path: '/admin/astra-gateway', redirect: '/admin/harvest-flow' },
@@ -912,7 +908,7 @@ router.beforeEach(async (to, _from, next) => {
     try {
       const status = await getSetupStatus()
       if (!status.needs_setup) {
-        next(resolveCompletedSetupRedirectPath(authStore.isAuthenticated, authStore.isAdmin, authStore.isObserver))
+        next(resolveCompletedSetupRedirectPath(authStore.isAuthenticated, authStore.isAdmin, authStore.canViewAccounts))
         return
       }
     } catch {
@@ -923,12 +919,11 @@ router.beforeEach(async (to, _from, next) => {
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
-    if (authStore.isAuthenticated && authStore.isAccountViewer && (to.path === '/login' || to.path === '/register')) { next('/account-pool'); return }
     if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
       // In backend mode, non-admin users should NOT be redirected away from login
       // (they are blocked from all protected routes, so redirecting would cause a loop)
       if (appStore.backendModeEnabled && !authStore.isAdmin) {
-        if (authStore.isObserver) {
+        if (authStore.canViewAccounts) {
           next('/admin/accounts')
         } else {
           next()
@@ -936,7 +931,7 @@ router.beforeEach(async (to, _from, next) => {
         return
       }
       // Admin users go to admin dashboard, regular users go to user dashboard
-      next(authStore.isAdmin ? '/admin/dashboard' : authStore.isObserver ? '/admin/accounts' : '/dashboard')
+      next(authStore.isAdmin ? '/admin/dashboard' : authStore.canViewAccounts ? '/admin/accounts' : '/dashboard')
       return
     }
     // Model Plaza:公开路由但受「启用开关 + 可选强制登录」双重控制(后端同口径 fail-closed)
@@ -992,13 +987,7 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
-  // A dedicated page prevents the read-only role from entering management UIs.
-  if (authStore.isAccountViewer) {
-    if (to.path !== '/account-pool') { next('/account-pool'); return }
-    next(); return
-  }
-  if (to.meta.requiresAccountViewing && !authStore.isAdmin) { next('/dashboard'); return }
-  if (to.meta.requiresAccountManagement && !authStore.canManageAccounts) {
+  if (to.meta.requiresAccountManagement && !authStore.canViewAccounts) {
     next('/dashboard')
     return
   }
@@ -1099,7 +1088,7 @@ router.beforeEach(async (to, _from, next) => {
 
   // Backend mode: admins get full access; observers may use account management and their own usage.
   if (appStore.backendModeEnabled) {
-    if (authStore.isAuthenticated && (authStore.isAdmin || (authStore.isObserver && (to.meta.requiresAccountManagement || to.path === '/usage')))) {
+    if (authStore.isAuthenticated && (authStore.isAdmin || (authStore.isObserver && (to.meta.requiresAccountManagement || to.path === '/usage')) || (authStore.isAccountViewer && to.meta.requiresAccountManagement))) {
       next()
       return
     }

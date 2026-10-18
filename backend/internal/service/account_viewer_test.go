@@ -4,36 +4,32 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestAccountViewerDTOHidesCredentialsEmailsAndOtherGroups(t *testing.T) {
-	now := time.Now()
-	reset := now.Add(time.Hour)
-	account := &Account{ID: 1, Name: "Personal alice+one@example.com / 中文邮箱@例子.公司", Platform: PlatformAnthropic, Type: AccountTypeOAuth, Status: StatusActive,
-		Credentials:      map[string]any{"email": "alice+one@example.com", "access_token": "PRIVATE_TOKEN", "refresh_token": "PRIVATE_REFRESH", "cookie": "PRIVATE_COOKIE"},
-		Extra:            map[string]any{"private_email": "secret@example.net", "passive_usage_sampled_at": now.Format(time.RFC3339), "session_window_utilization": 0.25, "passive_usage_7d_utilization": 0.5, "passive_usage_7d_reset": reset.Unix()},
-		SessionWindowEnd: &reset, ErrorMessage: "error for hidden@example.com PRIVATE_ERROR", GroupIDs: []int64{10, 20},
-		Groups: []*Group{{ID: 10, Name: "Pool owner@example.com"}, {ID: 20, Name: "PRIVATE_GROUP"}},
-		Notes:  new("PRIVATE_NOTES"), ProxyID: new(int64(99)),
-	}
-	ctx := WithObserverScope(context.Background(), []int64{10})
-	dto := AccountForViewer(ctx, account)
-	data, err := json.Marshal(dto)
-	require.NoError(t, err)
-	for _, secret := range []string{"alice+one@example.com", "中文邮箱@例子.公司", "owner@example.com", "PRIVATE_", "credentials", "proxy_id", "extra", "error_message"} {
-		require.NotContains(t, string(data), secret)
-	}
-	require.Len(t, dto.Groups, 1)
-	require.Equal(t, int64(10), dto.Groups[0].ID)
-	require.NotNil(t, dto.UsageWindows[0].UsedPercent)
-	require.Equal(t, 25.0, *dto.UsageWindows[0].UsedPercent)
-	require.Equal(t, "Personal alice+one@example.com / 中文邮箱@例子.公司", account.Name, "never mutate cached source identities")
-	require.Len(t, account.Groups, 2)
+func TestAccountViewerRedactionMasksEmailsWithoutMutatingInput(t *testing.T) {
+	require.Equal(t, "Personal *** / ***", RedactAccountViewerText("Personal alice+one@example.com / 中文邮箱@例子.公司"))
+	require.Equal(t, `"***"`, RedactAccountViewerText(`"bob@example.com"`))
+
+	extra := map[string]any{"email_address": "bob@example.com", "nested": map[string]any{"list": []any{"carol@example.com", 3}}, "ratio": 0.5}
+	out := RedactAccountViewerValue(extra).(map[string]any)
+	require.Equal(t, "***", out["email_address"])
+	require.Equal(t, []any{"***", 3}, out["nested"].(map[string]any)["list"])
+	require.Equal(t, 0.5, out["ratio"])
+	require.Equal(t, "bob@example.com", extra["email_address"], "never mutate cache-backed maps")
+	require.Equal(t, "carol@example.com", extra["nested"].(map[string]any)["list"].([]any)[0])
+}
+
+func TestAccountViewerScopeIsObserverScopedButDistinct(t *testing.T) {
+	ctx := WithAccountViewerScope(context.Background(), []int64{7})
+	require.True(t, IsAccountViewerScope(ctx))
+	ids, scoped := ObserverGroupIDs(ctx)
+	require.True(t, scoped)
+	require.Equal(t, []int64{7}, ids)
+	require.False(t, IsAccountViewerScope(WithObserverScope(context.Background(), []int64{7})))
+	require.False(t, ObserverCanManageAccount(WithAccountViewerScope(context.Background(), nil), &Account{GroupIDs: []int64{1}}))
 }
 
 func TestAccountViewerRoleIsDistinctFromObserverAndAdmin(t *testing.T) {
@@ -44,6 +40,4 @@ func TestAccountViewerRoleIsDistinctFromObserverAndAdmin(t *testing.T) {
 	require.True(t, user.IsAccountViewer())
 	require.False(t, user.IsAdmin())
 	require.False(t, user.IsObserver())
-	require.Empty(t, ObserverVisibleGroups(WithObserverScope(t.Context(), nil), []int64{1, 2}))
-	require.False(t, ObserverCanManageAccount(WithObserverScope(t.Context(), nil), &Account{GroupIDs: []int64{1}}))
 }

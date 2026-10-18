@@ -39,6 +39,7 @@
       </button>
 
       <button
+        v-if="!accountsReadOnly"
         type="button"
         class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-orange-400 dark:hover:bg-orange-900/30"
         :disabled="resetting || loading || !canReset"
@@ -73,7 +74,7 @@
         {{ t('admin.accounts.openaiQuotaReset.points') }}
         <span class="truncate tabular-nums">{{ creditsDisplay }}</span>
       </button>
-      <OpenAIReferralCell :account="account" />
+      <OpenAIReferralCell v-if="!accountsReadOnly" :account="account" />
     </div>
 
     <div v-if="creditsCacheWarning" class="text-[10px] text-amber-600 dark:text-amber-400">
@@ -182,7 +183,7 @@
 
 <script setup lang="ts">
 import { getSiteTimeZone } from '@/utils/siteTimezone'
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Account } from '@/types'
 import {
@@ -193,6 +194,7 @@ import {
 } from '@/api/admin/accounts'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import OpenAIReferralCell from '@/components/account/OpenAIReferralCell.vue'
+import { accountsReadOnlyKey } from '@/components/account/accountsReadOnly'
 
 const props = defineProps<{
   account: Account
@@ -203,6 +205,8 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+// The read-only account role may query quota but not consume reset credits or send referrals.
+const accountsReadOnly = inject(accountsReadOnlyKey, false)
 
 // Visible only for OpenAI OAuth accounts.
 const visible = computed(() => props.account.platform === 'openai' && props.account.type === 'oauth')

@@ -44,6 +44,12 @@ func (h *AccountHandler) AuthorizeObserver(c *gin.Context) {
 		c.Abort()
 		return
 	}
+	// Searching raw account names would let a viewer probe redacted email text.
+	if role == service.RoleAccountViewer && c.Query("search") != "" {
+		response.BadRequest(c, "Search is unavailable for the read-only account role")
+		c.Abort()
+		return
+	}
 	ids, err := parseAccountIDs(c)
 	if err != nil {
 		response.BadRequest(c, "Invalid account IDs")

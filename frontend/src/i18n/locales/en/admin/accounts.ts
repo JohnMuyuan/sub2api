@@ -14,6 +14,7 @@ export default {
       },
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
+      viewerDescription: 'View status, quota and statistics of accounts in your assigned groups',
       createAccount: 'Create Account',
       autoRefresh: 'Auto Refresh',
       enableAutoRefresh: 'Enable auto refresh',

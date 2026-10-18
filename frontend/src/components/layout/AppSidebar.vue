@@ -33,14 +33,7 @@
 
     <!-- Navigation -->
     <nav ref="sidebarNavRef" class="sidebar-nav scrollbar-hide">
-      <div v-if="authStore.isAccountViewer" class="sidebar-section">
-        <router-link to="/account-pool" class="sidebar-link sidebar-link-active" :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
-          :title="t('accountViewer.title')" @click="handleMenuItemClick('/account-pool')">
-          <ChartIcon class="h-5 w-5 flex-shrink-0" />
-          <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }">{{ t('accountViewer.title') }}</span>
-        </router-link>
-      </div>
-      <div v-if="authStore.isObserver" class="sidebar-section">
+      <div v-if="authStore.isObserver || authStore.isAccountViewer" class="sidebar-section">
         <router-link to="/admin/accounts" class="sidebar-link mb-1"
           :class="{ 'sidebar-link-active': isActive('/admin/accounts'), 'sidebar-link-collapsed': sidebarCollapsed }"
           :title="sidebarCollapsed ? t('nav.accounts') : undefined"
@@ -48,7 +41,7 @@
           <GlobeIcon class="h-5 w-5 flex-shrink-0" />
           <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }">{{ t('nav.accounts') }}</span>
         </router-link>
-        <router-link v-if="appStore.backendModeEnabled" to="/usage" class="sidebar-link mb-1"
+        <router-link v-if="appStore.backendModeEnabled && authStore.isObserver" to="/usage" class="sidebar-link mb-1"
           :class="{ 'sidebar-link-active': isActive('/usage'), 'sidebar-link-collapsed': sidebarCollapsed }"
           :title="sidebarCollapsed ? t('nav.usage') : undefined"
           @click="handleMenuItemClick('/usage')">
@@ -154,7 +147,7 @@
       </template>
 
       <!-- Regular User View -->
-      <template v-else-if="!appStore.backendModeEnabled && !authStore.isAccountViewer">
+      <template v-else-if="!appStore.backendModeEnabled">
         <div class="sidebar-section">
           <router-link
             v-for="item in userNavItems"
@@ -284,7 +277,7 @@ const sidebarNavRef = ref<HTMLElement | null>(null)
 const isDark = ref(document.documentElement.classList.contains('dark'))
 
 const homePath = computed(() => (
-  isAdmin.value ? '/admin/dashboard' : authStore.isAccountViewer ? '/account-pool' : authStore.isObserver ? '/admin/accounts' : '/dashboard'
+  isAdmin.value ? '/admin/dashboard' : authStore.canViewAccounts ? '/admin/accounts' : '/dashboard'
 ))
 
 // Per-group expand/collapse overrides. A group with no entry follows the
