@@ -301,3 +301,37 @@ type claudeSafetyAuthRepo struct {
 }
 
 func (*claudeSafetyAuthRepo) SetError(context.Context, int64, string) error { return nil }
+
+func TestClaudeSafetyForwardSSEErrorStopsAllAccountTypes(t *testing.T) {
+	svc := newForwardPartialUsageServiceForTest(nil)
+	u := &claudeSafetyUpstream{send: func(*http.Request, *tlsfingerprint.Profile) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n"))}, nil
+	}}
+	svc.httpUpstream = u
+	svc.accountRepo = &gatewayForwardErrorPolicyRepoStub{}
+	svc.rateLimitService = NewRateLimitService(svc.accountRepo, nil, svc.cfg, nil, nil)
+	account := newAnthropicOAuthAccountForPartialUsageTest()
+	c := newTransportErrorTestGin(t)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(`{"model":"claude-3-5-sonnet-latest","stream":true,"max_tokens":32,"messages":[{"role":"user","content":"hello"}]}`)), PlatformAnthropic)
+	require.NoError(t, err)
+	_, err = svc.Forward(context.Background(), c, account, parsed)
+	var failover *UpstreamFailoverError
+	require.ErrorAs(t, err, &failover)
+	require.False(t, failover.ShouldRetryNextAccount(), "the scheduler must stop before it can select an API-key/Bedrock alternate")
+	require.Equal(t, 1, u.calls)
+}
+
+func TestClaudeSafetyOuterFailoverPreservesOriginalError(t *testing.T) {
+	c := newTransportErrorTestGin(t)
+	original := &UpstreamFailoverError{StatusCode: 429, ResponseBody: []byte("original upstream error"), RetryableOnSameAccount: true}
+	require.Same(t, original, protectClaudeReplay(c, original), "unrelated providers retain their behavior")
+	claudeSafety(c).terminal = "upstream_response_already_accepted"
+	var protected *UpstreamFailoverError
+	require.ErrorAs(t, protectClaudeReplay(c, original), &protected)
+	require.False(t, protected.ShouldRetryNextAccount())
+	require.False(t, protected.RetryableOnSameAccount)
+	require.Equal(t, original.StatusCode, protected.StatusCode)
+	require.Equal(t, original.ResponseBody, protected.ResponseBody)
+	require.True(t, original.ShouldRetryNextAccount(), "do not mutate a shared upstream error")
+	require.True(t, original.RetryableOnSameAccount)
+}

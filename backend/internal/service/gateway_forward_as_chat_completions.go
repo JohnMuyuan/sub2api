@@ -32,7 +32,8 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	account *Account,
 	body []byte,
 	parsed *ParsedRequest,
-) (*ForwardResult, error) {
+) (forwardResult *ForwardResult, forwardErr error) {
+	defer func() { forwardErr = protectClaudeReplay(c, forwardErr) }()
 	startTime := time.Now()
 
 	// 1. Parse Chat Completions request

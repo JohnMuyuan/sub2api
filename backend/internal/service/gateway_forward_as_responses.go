@@ -34,7 +34,8 @@ func (s *GatewayService) ForwardAsResponses(
 	account *Account,
 	body []byte,
 	parsed *ParsedRequest,
-) (*ForwardResult, error) {
+) (forwardResult *ForwardResult, forwardErr error) {
+	defer func() { forwardErr = protectClaudeReplay(c, forwardErr) }()
 	startTime := time.Now()
 
 	normalizedBody, normalized, err := normalizeOpenAIResponsesLegacyIngressWithConfig(s.cfg, body)

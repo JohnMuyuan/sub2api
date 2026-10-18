@@ -280,3 +280,29 @@ func diagnoseClaudeRequest(c *gin.Context, req *http.Request, body []byte, accou
 		}
 	}
 }
+
+// Propagate acceptance/ambiguous-result protection to the outer scheduler as
+// well. An alternate account may be API-key/Bedrock and bypass subscription
+// send admission, so checking only the next doClaudeRequest is insufficient.
+func protectClaudeReplay(c *gin.Context, err error) error {
+	if c == nil || err == nil {
+		return err
+	}
+	value, exists := c.Get(claudeRequestSafetyKey)
+	if !exists {
+		return err
+	}
+	state, ok := value.(*claudeRequestSafety)
+	if !ok || state.terminal == "" {
+		return err
+	}
+	var failover *UpstreamFailoverError
+	if !errors.As(err, &failover) || !failover.ShouldRetryNextAccount() {
+		return err
+	}
+	protected := *failover
+	protected.NextAccountAction = NextAccountStop
+	protected.RetryableOnSameAccount = false
+	slog.Warn("claude.retry_protection", "reason", state.terminal)
+	return &protected
+}
