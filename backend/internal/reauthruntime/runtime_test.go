@@ -37,6 +37,31 @@ func archive(t *testing.T, entries []*tar.Header, content []string) []byte {
 	return data.Bytes()
 }
 
+func TestCustomReleaseRepository(t *testing.T) {
+	previous := githubRepo
+	githubRepo = "JohnMuyuan/sub2api"
+	t.Cleanup(func() { githubRepo = previous })
+	data := []byte("invalid archive: download URL test only")
+	sum := sha256.Sum256(data)
+	digest := hex.EncodeToString(sum[:])
+	m := New(t.TempDir(), "2026.10.12", "http://127.0.0.1:4040", "test")
+	var urls []string
+	m.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+		urls = append(urls, req.URL.String())
+		body := data
+		if len(urls) == 1 {
+			body, _ = json.Marshal(map[string]any{"assets": []map[string]string{{"name": "sub2api-reauth_2026.10.12_linux_" + runtime.GOARCH + ".tar.gz", "digest": "sha256:" + digest}}})
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(body)), Header: http.Header{}}, nil
+	})}
+	_, err := m.prepare(context.Background())
+	require.Error(t, err) // Invalid tarball is rejected before any execution.
+	require.Equal(t, []string{
+		"https://api.github.com/repos/JohnMuyuan/sub2api/releases/tags/v2026.10.12",
+		"https://github.com/JohnMuyuan/sub2api/releases/download/v2026.10.12/sub2api-reauth_2026.10.12_linux_" + runtime.GOARCH + ".tar.gz",
+	}, urls)
+}
+
 func TestExtractRejectsEscapesAndLinks(t *testing.T) {
 	for _, h := range []*tar.Header{
 		{Name: "../escape", Typeflag: tar.TypeReg, Size: 1},

@@ -20,4 +20,24 @@ if [ "${1#-}" != "$1" ]; then
     set -- /app/sub2api "$@"
 fi
 
+# Custom images keep the executable beside the persistent application data.
+# A new image seeds its own binary once; restarting the same image preserves
+# a binary installed by the built-in updater.
+if [ "${SUB2API_PERSISTENT_UPDATES:-0}" = "1" ] && [ "${1:-}" = "/app/sub2api" ]; then
+    runtime_dir=/app/data/runtime
+    mkdir -p "$runtime_dir"
+    image_hash=$(sha256sum /app/sub2api | cut -d ' ' -f 1)
+    previous_hash=$(cat "$runtime_dir/image.sha256" 2>/dev/null || true)
+    if [ "$image_hash" != "$previous_hash" ] || [ ! -x "$runtime_dir/sub2api" ]; then
+        cp /app/sub2api "$runtime_dir/sub2api.seed"
+        chmod 755 "$runtime_dir/sub2api.seed"
+        mv -f "$runtime_dir/sub2api.seed" "$runtime_dir/sub2api"
+        rm -f "$runtime_dir/sub2api.backup"
+        printf '%s\n' "$image_hash" > "$runtime_dir/image.sha256.tmp"
+        mv -f "$runtime_dir/image.sha256.tmp" "$runtime_dir/image.sha256"
+    fi
+    shift
+    set -- "$runtime_dir/sub2api" "$@"
+fi
+
 exec "$@"

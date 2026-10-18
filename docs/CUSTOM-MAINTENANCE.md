@@ -13,14 +13,14 @@
 
 ## 上游更新
 
-GitHub Actions 的 **Custom upstream sync** 每天检查一次，也可以点 Run workflow 手动执行。
-有更新时，在专用的 `sync/upstream` 分支尝试合并，并运行 Docker 构建验证。
-成功后创建或复用合并到 `custom` 的 PR；原有自定义分支不会被自动合并。
+GitHub Actions 的 **Custom upstream sync** 每小时检查一次，也可以点 Run workflow 手动执行。
+有更新时，在专用的 `sync/upstream` 分支尝试合并，并运行功能回归测试和 Docker 构建验证。
+成功后创建或复用 PR，并将 `custom` 快进到通过验证的提交，随后自动发布镜像和内置更新包。
 有冲突或构建失败时，检查 Actions 日志，由维护者处理。`sync/upstream` 是机器人专用分支，请勿在上面开发。
-如果已经存在更新 PR，后续同步会刷新其分支，合并前应查看最新同步运行的结果。
+如果验证期间 `custom` 有新提交，自动合并会拒绝覆盖它，等待下次同步重新验证。
 
-构建检查包括 Dockerfile 中的前端检查、前端打包和 Go 编译，不等同于完整测试。
-GitHub 的 GITHUB_TOKEN 创建或更新的 PR 不会自动触发原有 PR CI；需要完整测试时让维护者额外运行。
+构建检查包括自定义功能的 Go 回归测试、Docker 持久更新测试、前端检查、前端打包和 Go 编译，不等同于完整集成测试。
+验证由同步工作流直接调用，不依赖机器人创建的 PR 是否触发额外 CI。
 GitHub 可能在公开仓库长期无活动后停用定时工作流，可在 Actions 中重新启用。
 
 手动更新：
@@ -36,8 +36,8 @@ git push origin custom
 
 ## 自己的 Docker 镜像
 
-Actions → **Custom build** → Run workflow（选择 `custom`）。
-不勾选 publish 时只验证构建；勾选后发布：
+提交或合并到 `custom` 后自动发布。也可以 Actions → **Custom build** → Run workflow（选择 `custom`）。
+手动运行时不勾选 publish 只验证构建；勾选后发布镜像和 GitHub Release：
 
 ```text
 ghcr.io/johnmuyuan/sub2api:custom
@@ -50,7 +50,7 @@ ghcr.io/johnmuyuan/sub2api:sha-完整提交ID
 
 部署前备份数据库，并记录旧镜像的提交标签。将实际部署使用的 Compose 文件中应用镜像换为自己的镜像，再拉取并重建应用容器。
 具体服务名和命令取决于现有部署；本次没有连接或修改服务器。
-部署后不要使用应用内指向原作者发行版的一键更新来覆盖自定义版本。
+首次换成新的自定义镜像后，应用内一键更新和回退均指向自己的仓库。部署迁移、持久目录和版本规则见 [CUSTOM-AUTO-UPDATE.md](CUSTOM-AUTO-UPDATE.md)。
 代码、数据库迁移和部署变化需要一起检查；旧镜像不保证兼容新版数据库。
 
 原有 Release 工作流仍保留。自定义镜像使用上述 Custom build，无需配置上游的其他发布凭据。
