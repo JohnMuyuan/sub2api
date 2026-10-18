@@ -292,97 +292,18 @@ func safeHeaderValueForLog(key string, v string) string {
 	}
 }
 
-func extractSystemPreviewFromBody(body []byte) string {
-	if len(body) == 0 {
-		return ""
-	}
-	sys := gjson.GetBytes(body, "system")
-	if !sys.Exists() {
-		return ""
-	}
-
-	switch {
-	case sys.IsArray():
-		for _, item := range sys.Array() {
-			if !item.IsObject() {
-				continue
-			}
-			if strings.EqualFold(item.Get("type").String(), "text") {
-				if t := item.Get("text").String(); strings.TrimSpace(t) != "" {
-					return t
-				}
-			}
-		}
-		return ""
-	case sys.Type == gjson.String:
-		return sys.String()
-	default:
-		return ""
-	}
-}
-
 func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) string {
 	if req == nil {
 		return ""
 	}
 
-	// Only log a minimal fingerprint to avoid leaking user content.
-	interesting := []string{
-		"user-agent",
-		"x-app",
-		"anthropic-dangerous-direct-browser-access",
-		"anthropic-version",
-		"anthropic-beta",
-		"x-stainless-lang",
-		"x-stainless-package-version",
-		"x-stainless-os",
-		"x-stainless-arch",
-		"x-stainless-runtime",
-		"x-stainless-runtime-version",
-		"x-stainless-retry-count",
-		"x-stainless-timeout",
-		"authorization",
-		"x-api-key",
-		"content-type",
-		"accept",
-		"x-stainless-helper-method",
-	}
-
-	h := make([]string, 0, len(interesting))
-	for _, k := range interesting {
-		if v := req.Header.Get(k); v != "" {
-			h = append(h, fmt.Sprintf("%s=%q", k, safeHeaderValueForLog(k, v)))
-		}
-	}
-
-	metaUserID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String())
-	sysPreview := strings.TrimSpace(extractSystemPreviewFromBody(body))
-
-	// Truncate preview to keep logs sane.
-	if len(sysPreview) > 300 {
-		sysPreview = sysPreview[:300] + "..."
-	}
-	sysPreview = strings.ReplaceAll(sysPreview, "\n", "\\n")
-	sysPreview = strings.ReplaceAll(sysPreview, "\r", "\\r")
-
 	aid := int64(0)
-	aname := ""
 	if account != nil {
 		aid = account.ID
-		aname = account.Name
 	}
-
-	return fmt.Sprintf(
-		"url=%s account=%d(%s) tokenType=%s mimic=%t meta.user_id=%q system.preview=%q headers={%s}",
-		req.URL.String(),
-		aid,
-		aname,
-		tokenType,
-		mimicClaudeCode,
-		metaUserID,
-		sysPreview,
-		strings.Join(h, " "),
-	)
+	return fmt.Sprintf("account=%d oauth=%t mimic=%t metadata_present=%t issues=%v",
+		aid, tokenType == "oauth", mimicClaudeCode,
+		gjson.GetBytes(body, "metadata.user_id").Exists(), claudeConsistencyIssues(req, body))
 }
 
 func logClaudeMimicDebug(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) {
@@ -739,7 +660,7 @@ func (e *UpstreamFailoverError) IsCredentialFailure() bool {
 // except an Excel BPS 429, which only cools the account's BPS route, and a
 // local BPS image admission rejection, which never reached the upstream.
 func (e *UpstreamFailoverError) ShouldReportAccountScheduleFailure() bool {
-	if e == nil || e.Reason == ExcelBPSRateLimitedReason || e.Reason == GrokUnknownForbiddenReason || e.IsExcelBPSImageAdmissionRejection() {
+	if e == nil || e.Reason == claudeRetryProtectionReason || e.Reason == ExcelBPSRateLimitedReason || e.Reason == GrokUnknownForbiddenReason || e.IsExcelBPSImageAdmissionRejection() {
 		return false
 	}
 	return !e.IsCredentialFailure() || e.Scope == GatewayFailureScopeAccount
