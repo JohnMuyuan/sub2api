@@ -1814,6 +1814,8 @@
         </div>
       </div>
 
+      <AccountWindowPrimeFields v-if="supportsWindowPrime" v-model="accountWindowPrime" />
+
       <div v-if="!isSparkShadow && !authStore.isObserver">
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
@@ -3541,6 +3543,14 @@ import {
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
+import AccountWindowPrimeFields from '@/components/account/AccountWindowPrimeFields.vue'
+import {
+  applyAccountWindowPrimeConfig,
+  isValidWindowPrimePrompts,
+  readAccountWindowPrimeConfig,
+  supportsAccountWindowPrime,
+  type AccountWindowPrimeConfig
+} from '@/utils/accountWindowPrime'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import { DEFAULT_EXCEL_BPS_MODELS, VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
@@ -4062,6 +4072,8 @@ const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const isSyncingAntigravityUpstream = ref(false)
 const tempUnschedEnabled = ref(false)
+const accountWindowPrime = ref<AccountWindowPrimeConfig>(readAccountWindowPrimeConfig(undefined))
+const supportsWindowPrime = computed(() => supportsAccountWindowPrime(props.account))
 const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
 const ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY = 'account_scheduling_threshold'
@@ -4875,6 +4887,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   loadTempUnschedRules(credentials)
   loadAccountSchedulingThresholdOverride(newAccount.platform, credentials)
+  accountWindowPrime.value = readAccountWindowPrimeConfig(newAccount.extra as Record<string, unknown> | undefined)
 
   // Load header override state for eligible account platforms/types
   headerOverrideEnabled.value = false
@@ -5733,6 +5746,11 @@ const handleSubmit = async () => {
   const autoBPSError = autoBPSSupported.value ? autoBPS.validate() : ''
   if (autoBPSError) {
     appStore.showError(t(autoBPSError))
+    return
+  }
+
+  if (supportsWindowPrime.value && !isValidWindowPrimePrompts(accountWindowPrime.value.prompts)) {
+    appStore.showError(t('admin.settings.windowPrime.invalid'))
     return
   }
 
@@ -6619,6 +6637,7 @@ const handleSubmit = async () => {
       if (accountRequestTimezone.value) costExtra.request_timezone = accountRequestTimezone.value
       else delete costExtra.request_timezone
     }
+    if (supportsWindowPrime.value) applyAccountWindowPrimeConfig(costExtra, accountWindowPrime.value)
     updatePayload.extra = costExtra
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

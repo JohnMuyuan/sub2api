@@ -763,6 +763,7 @@ func ProvideScheduledTestRunnerService(
 	rdb *redis.Client,
 	groupTests *PelicanGroupTestService,
 	monitor *ChannelMonitorV2Service,
+	lockCache LeaderLockCache,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
 	if rdb != nil {
@@ -770,6 +771,7 @@ func ProvideScheduledTestRunnerService(
 	}
 	svc.judgeQuality = judge.Judge
 	svc.groupTests = groupTests
+	svc.windowPrime = newAccountWindowPrimeRunner(accountTestSvc, rateLimitSvc, lockCache)
 	svc.candyMonitor = monitor.candy
 	startBackgroundService(cfg, svc)
 	return svc

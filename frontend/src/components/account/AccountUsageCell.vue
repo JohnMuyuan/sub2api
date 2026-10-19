@@ -671,6 +671,7 @@
         class="text-xs text-gray-400"
       >-</div>
     </div>
+    <AccountWindowPrimeStatus :extra="account.extra" />
   </div>
 </template>
 
@@ -687,6 +688,7 @@ import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import { isOfficialGeminiBaseUrl } from '@/utils/geminiExplicitCache'
 import UsageProgressBar from './UsageProgressBar.vue'
+import AccountWindowPrimeStatus from './AccountWindowPrimeStatus.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'

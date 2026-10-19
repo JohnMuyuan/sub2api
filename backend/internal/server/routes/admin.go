@@ -664,6 +664,8 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		adminSettings.GET("/system-timezone", h.Admin.Setting.GetSystemTimezone)
 		adminSettings.PUT("/system-timezone", h.Admin.Setting.UpdateSystemTimezone)
+		adminSettings.GET("/account-window-prime", h.Admin.Setting.GetAccountWindowPrime)
+		adminSettings.PUT("/account-window-prime", h.Admin.Setting.UpdateAccountWindowPrime)
 		adminSettings.GET("/astra-routing", h.Admin.Setting.GetAstraRouting)
 		adminSettings.PUT("/astra-routing", h.Admin.Setting.UpdateAstraRouting)
 		adminSettings.GET("", h.Admin.Setting.GetSettings)

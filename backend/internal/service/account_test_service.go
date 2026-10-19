@@ -654,6 +654,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
+	applyAccountWindowPrimeTestPayload(ctx, payload, "messages")
 	applyModelTracePayload(ctx, payload)
 	payloadBytes, _ := json.Marshal(payload)
 
@@ -699,6 +700,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	notifyAccountWindowPrimeHeaders(ctx, resp.Header)
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -1016,6 +1018,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
 		payload = createPelicanOpenAIPayload(upstreamTestModelID, isOAuth, options.prompt, options.reasoningEffort)
 	}
+	applyAccountWindowPrimeTestPayload(ctx, payload, "input")
 	applyModelTracePayload(ctx, payload)
 	payloadBytes, _ := json.Marshal(payload)
 

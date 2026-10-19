@@ -154,6 +154,8 @@ var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	"codex_7d_reset_after_seconds":         {},
 	"codex_7d_window_minutes":              {},
 	"codex_7d_reset_at":                    {},
+	// The last window-priming attempt belongs to the source account.
+	"window_prime_state": {},
 }
 
 func duplicateAccountExtra(value map[string]any) (map[string]any, error) {

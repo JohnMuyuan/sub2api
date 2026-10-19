@@ -5047,6 +5047,8 @@
                 <Toggle v-model="form.allow_ungrouped_key_scheduling" />
               </div>
 
+              <AccountWindowPrimeSettings />
+
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
                 <div class="mb-3">
                   <label class="font-medium text-gray-900 dark:text-white">
@@ -9420,6 +9422,7 @@ import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import SystemTimezoneSettings from "@/components/settings/SystemTimezoneSettings.vue";
 import RequestTimezoneSettings from "@/components/settings/RequestTimezoneSettings.vue";
 import Toggle from "@/components/common/Toggle.vue";
+import AccountWindowPrimeSettings from "@/components/settings/AccountWindowPrimeSettings.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
