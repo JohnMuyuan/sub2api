@@ -371,6 +371,7 @@ const accountListGroupUngroupedQueryValue = "ungrouped"
 func (h *AccountHandler) accountResponseFromService(account *service.Account) *dto.Account {
 	out := dto.AccountFromService(account)
 	h.enrichCodexTicketStatus(account, out)
+	h.enrichSchedulingThresholdRounds(account, out)
 	if h != nil && h.ollamaCloudUsage != nil && out != nil {
 		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
 	}
@@ -380,6 +381,7 @@ func (h *AccountHandler) accountResponseFromService(account *service.Account) *d
 func (h *AccountHandler) accountListResponseFromService(account *service.Account) *dto.Account {
 	out := dto.AccountFromServiceShallow(account)
 	h.enrichCodexTicketStatus(account, out)
+	h.enrichSchedulingThresholdRounds(account, out)
 	if out != nil && account != nil {
 		out.Proxy = dto.ProxyFromService(account.Proxy)
 	}
@@ -398,6 +400,12 @@ func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *
 			cfg.FailClosed = h.codexTicketSettings.GetOpenAICodexTicketFailClosed(context.Background())
 		}
 		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
+	}
+}
+
+func (h *AccountHandler) enrichSchedulingThresholdRounds(account *service.Account, out *dto.Account) {
+	if h != nil && h.rateLimitService != nil && out != nil {
+		out.SchedulingThresholdRounds = h.rateLimitService.AccountSchedulingThresholdRounds(context.Background(), account)
 	}
 }
 

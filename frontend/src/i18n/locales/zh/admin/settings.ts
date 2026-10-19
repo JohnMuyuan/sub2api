@@ -1,5 +1,43 @@
 export default {
     settings: {
+      schedulingThresholdRange: {
+        title: '平台随机停调阈值',
+        description: '为平台设置一个百分比范围后，该平台账号的每个额度窗口（5 小时、7 天、周、月等）重置时，会在范围内随机抽取本轮的停调百分比，用量达到该值才暂停调度。启用后覆盖上方该平台的固定阈值；账号编辑页里的单独设置优先于这里。',
+        separateSave: '本区域单独保存，不随页面底部的“保存”按钮提交。',
+        enabled: '启用随机范围',
+        fixedFallback: '未启用时使用固定阈值 {value}%',
+        min: '下限 %',
+        max: '上限 %',
+        fullMonthlyLimit: '每月最多抽到 100 的次数',
+        rangeHint: '整数 1–100，下限不大于上限。同一窗口内数值保持不变，窗口重置后重新抽取。',
+        fullHint: '抽到 100 表示这一轮窗口不主动停调：账号会一直使用到上游额度真正耗尽，再由上游限流处理接管。',
+        fullLimitHint: '0 = 不限制（纯随机）。填 N = 每种窗口（5 小时、7 天等分别计数）每个自然月最多 N 次抽到 100，用完后改为在“下限 ~ 99”之间重新抽取。按窗口重置时间所在的自然月计算，使用全站时区。仅在上限为 100 时生效。',
+        invalid: '{platform}：请填写 1–100 的整数，下限不大于上限，次数为 0–1000',
+        invalidAccount: '随机范围无效：请填写 1–100 的整数，下限不大于上限，次数为 0–1000',
+        save: '保存随机停调范围',
+        saved: '随机停调范围已保存',
+        error: '随机停调范围保存失败，请检查输入或重试',
+        loadError: '随机停调范围加载失败',
+        retry: '重新加载',
+        accountToggle: '使用随机范围',
+        accountToggleHint: '开启后，每个额度窗口重置时在范围内随机抽取本轮停调百分比，取代上面的固定值。',
+        rounds: {
+          title: '本轮停调阈值',
+          stopAt: '{window} 用到 {percent}% 停',
+          noStop: '{window} 本轮不停调',
+          tooltip: '随机范围 {min}–{max}%，本窗口重置于 {resetsAt}',
+          fullDraws: '本月已抽到 100：{used}/{limit} 次',
+        },
+        windows: {
+          '5h': '5h',
+          '7d': '7d',
+          '7d_oi': '7d Fable',
+          quota: '配额',
+          weekly: '周',
+          monthly: '月',
+        },
+      },
+
       systemTimezone: {
         title: '全站时区',
         description: '用于系统日历日/周额度边界、统计日期和使用记录显示。保存后重启应用容器并刷新页面生效，历史请求的实际时间保持不变。订阅的滚动 7 天/30 天周期、上游额度重置时刻和单独配置的账号时区仍遵循各自规则。',

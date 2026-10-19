@@ -1,5 +1,43 @@
 export default {
     settings: {
+      schedulingThresholdRange: {
+        title: 'Random platform pause thresholds',
+        description: 'With a range set for a platform, every usage window of its accounts (5-hour, 7-day, weekly, monthly and so on) draws a random pause percentage from the range when the window resets. Scheduling pauses once usage reaches that value. When enabled it replaces the fixed platform threshold above; an account’s own setting still takes priority.',
+        separateSave: 'This section is saved on its own, not by the Save button at the bottom of the page.',
+        enabled: 'Use a random range',
+        fixedFallback: 'When off, the fixed threshold {value}% applies',
+        min: 'Minimum %',
+        max: 'Maximum %',
+        fullMonthlyLimit: 'Max draws of 100 per month',
+        rangeHint: 'Integers 1–100, minimum not above maximum. The value stays the same within a window and is drawn again after it resets.',
+        fullHint: 'Drawing 100 means no proactive pause in that window: the account keeps serving until the upstream quota is actually exhausted, and upstream rate-limit handling takes over.',
+        fullLimitHint: '0 = no limit (purely random). N = each window kind (5-hour, 7-day and so on, counted separately) may draw 100 at most N times per calendar month; after that, draws are redone between the minimum and 99. Months follow the window’s reset time in the site timezone. Only applies when the maximum is 100.',
+        invalid: '{platform}: use integers 1–100 with minimum not above maximum, and a monthly count of 0–1000',
+        invalidAccount: 'Invalid random range: use integers 1–100 with minimum not above maximum, and a monthly count of 0–1000',
+        save: 'Save random ranges',
+        saved: 'Random pause ranges saved',
+        error: 'Could not save random pause ranges. Check the values and try again',
+        loadError: 'Could not load random pause ranges',
+        retry: 'Reload',
+        accountToggle: 'Use a random range',
+        accountToggleHint: 'When on, each usage window draws this round’s pause percentage from the range when it resets, instead of the fixed value above.',
+        rounds: {
+          title: 'Pause threshold this round',
+          stopAt: '{window}: pauses at {percent}%',
+          noStop: '{window}: no pause this round',
+          tooltip: 'Random range {min}–{max}%, window resets at {resetsAt}',
+          fullDraws: 'Draws of 100 this month: {used}/{limit}',
+        },
+        windows: {
+          '5h': '5h',
+          '7d': '7d',
+          '7d_oi': '7d Fable',
+          quota: 'Quota',
+          weekly: 'Weekly',
+          monthly: 'Monthly',
+        },
+      },
+
       systemTimezone: {
         title: 'Site timezone',
         description: 'Controls system calendar quota boundaries, statistics dates and usage timestamps. Restart the application container and reload the page after saving. Historical instants remain unchanged. Rolling subscription periods, upstream resets and explicit account timezones retain their own rules.',

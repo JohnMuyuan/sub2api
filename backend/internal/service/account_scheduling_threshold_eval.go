@@ -17,6 +17,9 @@ type AccountSchedulingThresholdDecision struct {
 	ThresholdPercent int
 	UsedPercent      float64
 	Until            *time.Time
+	// FullDrawExtraUpdates holds random-range full draws (100 = no pause this
+	// window) that must be counted in account.Extra, whether or not it pauses.
+	FullDrawExtraUpdates map[string]any
 }
 
 type accountSchedulingThresholdCandidate struct {
@@ -24,6 +27,8 @@ type accountSchedulingThresholdCandidate struct {
 	scope       string
 	usedPercent float64
 	until       *time.Time
+	// threshold is this window's own threshold when a random range applies.
+	threshold int
 }
 
 const accountSchedulingThresholdCredentialKey = "account_scheduling_threshold"
@@ -31,6 +36,12 @@ const accountSchedulingThresholdCredentialKey = "account_scheduling_threshold"
 // EvaluateAccountSchedulingThreshold evaluates whether an account should be paused
 // based on the current per-platform scheduling threshold snapshot.
 func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]int, now time.Time) AccountSchedulingThresholdDecision {
+	return EvaluateAccountSchedulingThresholdWithPolicy(account, AccountSchedulingThresholdPolicy{Thresholds: thresholds}, now)
+}
+
+// EvaluateAccountSchedulingThresholdWithPolicy also applies random ranges, in
+// which case every window carries its own drawn threshold.
+func EvaluateAccountSchedulingThresholdWithPolicy(account *Account, policy AccountSchedulingThresholdPolicy, now time.Time) AccountSchedulingThresholdDecision {
 	decision := AccountSchedulingThresholdDecision{}
 	if account == nil {
 		return decision
@@ -44,26 +55,16 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 		return decision
 	}
 
-	threshold, ok := resolveEffectiveAccountSchedulingThreshold(account, thresholds, decision.Platform)
+	rule, ok := resolveAccountSchedulingThresholdRule(account, policy, decision.Platform)
+	threshold := rule.basePercent()
 	decision.ThresholdPercent = threshold
-	if !ok || threshold >= 100 {
+	if !ok || rule.disabled() {
 		return decision
 	}
 
-	var winner *accountSchedulingThresholdCandidate
-	switch decision.Platform {
-	case PlatformOpenAI:
-		winner = pickLatestResetSchedulingCandidate(openAIThresholdCandidates(account, now), threshold, now)
-	case PlatformAnthropic:
-		winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
-	case PlatformGrok:
-		winner = pickLatestResetSchedulingCandidate(grokThresholdCandidates(account), threshold, now)
-	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode:
-		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, decision.Platform), threshold, now)
-	default:
-		return decision
-	}
-
+	candidates := accountSchedulingThresholdPlatformCandidates(account, decision.Platform, now)
+	decision.FullDrawExtraUpdates = applyAccountSchedulingThresholdRule(account, rule, candidates, policy.location(), now)
+	winner := pickLatestResetSchedulingCandidate(candidates, threshold, now)
 	if winner == nil {
 		return decision
 	}
@@ -71,25 +72,49 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 	decision.ShouldPause = true
 	decision.Window = winner.window
 	decision.Scope = winner.scope
+	decision.ThresholdPercent = candidateThreshold(winner, threshold)
 	decision.UsedPercent = winner.usedPercent
 	decision.Until = winner.until
 	return decision
 }
 
+func accountSchedulingThresholdPlatformCandidates(account *Account, platform string, now time.Time) []*accountSchedulingThresholdCandidate {
+	switch platform {
+	case PlatformOpenAI:
+		return openAIThresholdCandidates(account, now)
+	case PlatformAnthropic:
+		return anthropicThresholdCandidates(account)
+	case PlatformGrok:
+		return grokThresholdCandidates(account)
+	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode:
+		return cnProviderThresholdCandidates(account, platform)
+	default:
+		return nil
+	}
+}
+
 func evaluateAnthropicFableSchedulingThreshold(account *Account, thresholds map[string]int, now time.Time) AccountSchedulingThresholdDecision {
+	return evaluateAnthropicFableSchedulingThresholdWithPolicy(account, AccountSchedulingThresholdPolicy{Thresholds: thresholds}, now)
+}
+
+func evaluateAnthropicFableSchedulingThresholdWithPolicy(account *Account, policy AccountSchedulingThresholdPolicy, now time.Time) AccountSchedulingThresholdDecision {
 	decision := AccountSchedulingThresholdDecision{}
 	if account == nil || !strings.EqualFold(strings.TrimSpace(account.Platform), PlatformAnthropic) {
 		return decision
 	}
 
 	decision.Platform = PlatformAnthropic
-	threshold, ok := resolveEffectiveAccountSchedulingThreshold(account, thresholds, PlatformAnthropic)
+	rule, ok := resolveAccountSchedulingThresholdRule(account, policy, PlatformAnthropic)
+	threshold := rule.basePercent()
 	decision.ThresholdPercent = threshold
-	if !ok || threshold >= 100 {
+	if !ok || rule.disabled() {
 		return decision
 	}
 
 	candidate := anthropicFableThresholdCandidate(account)
+	if candidate != nil {
+		decision.FullDrawExtraUpdates = applyAccountSchedulingThresholdRule(account, rule, []*accountSchedulingThresholdCandidate{candidate}, policy.location(), now)
+	}
 	if !candidateMatchesThreshold(candidate, threshold, now) {
 		return decision
 	}
@@ -97,6 +122,7 @@ func evaluateAnthropicFableSchedulingThreshold(account *Account, thresholds map[
 	decision.ShouldPause = true
 	decision.Window = candidate.window
 	decision.Scope = candidate.scope
+	decision.ThresholdPercent = candidateThreshold(candidate, threshold)
 	decision.UsedPercent = candidate.usedPercent
 	decision.Until = candidate.until
 	return decision
@@ -109,15 +135,6 @@ func isAllowedSchedulingThresholdPlatform(platform string) bool {
 		}
 	}
 	return false
-}
-
-func resolveEffectiveAccountSchedulingThreshold(account *Account, thresholds map[string]int, platform string) (int, bool) {
-	if account != nil {
-		if threshold, ok := accountSchedulingThresholdOverride(account); ok {
-			return threshold, true
-		}
-	}
-	return lookupAccountSchedulingThreshold(thresholds, platform)
 }
 
 func accountSchedulingThresholdOverride(account *Account) (int, bool) {
@@ -428,7 +445,19 @@ func candidateMatchesThreshold(candidate *accountSchedulingThresholdCandidate, t
 	if candidate == nil || candidate.until == nil || !candidate.until.After(now) {
 		return false
 	}
+	threshold = candidateThreshold(candidate, threshold)
+	// A window that drew 100 from a random range is not paused this round.
+	if threshold >= 100 {
+		return false
+	}
 	return candidate.usedPercent >= float64(threshold)
+}
+
+func candidateThreshold(candidate *accountSchedulingThresholdCandidate, fallback int) int {
+	if candidate != nil && candidate.threshold > 0 {
+		return candidate.threshold
+	}
+	return fallback
 }
 
 func utilizationAsPercent(raw any) float64 {
