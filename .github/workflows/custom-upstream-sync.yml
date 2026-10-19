@@ -4,8 +4,8 @@ on:
   push:
     branches: [custom]
   schedule:
-    # Every 20 minutes, away from the top-of-hour traffic peak.
-    - cron: '7,27,47 * * * *'
+    # Every 30 minutes, away from the top-of-hour traffic peak.
+    - cron: '7,37 * * * *'
   workflow_dispatch:
 
 concurrency:
