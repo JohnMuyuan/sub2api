@@ -30,7 +30,12 @@ jobs:
         with:
           ref: custom
           fetch-depth: 0
-      - name: Merge upstream into the automation branch
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Merge the latest official upstream release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         id: merge
         shell: bash
         run: |
@@ -38,14 +43,14 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git remote add upstream https://github.com/ranxi2001/sub2api.git
-          git fetch upstream production
-          if git merge-base --is-ancestor upstream/production HEAD; then
+          release_sha=$(python .github/release-tools/custom_upstream_release.py)
+          if git merge-base --is-ancestor "$release_sha" HEAD; then
             echo 'changed=false' >> "$GITHUB_OUTPUT"
-            echo 'No upstream changes.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Latest official upstream release is already included.' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          merge_base=$(git merge-base HEAD upstream/production)
-          upstream_files=$(git diff --name-only "$merge_base" upstream/production)
+          merge_base=$(git merge-base HEAD "$release_sha")
+          upstream_files=$(git diff --name-only "$merge_base" "$release_sha")
           if grep -Eq '^(tools/(openai_|test_openai_|reauth-runtime/)|backend/internal/reauthruntime/|\.github/workflows/reauth-runtime\.yml$)' <<< "$upstream_files"; then
             echo 'runtime_changed=true' >> "$GITHUB_OUTPUT"
           else
@@ -53,7 +58,7 @@ jobs:
           fi
           previous=$(git ls-remote origin refs/heads/sync/upstream | cut -f1)
           git switch -c sync/upstream
-          if ! git -c merge.keep-custom-readme.driver=true merge --no-edit upstream/production; then
+          if ! git -c merge.keep-custom-readme.driver=true merge --no-edit "$release_sha"; then
             echo 'Upstream merge has conflicts. The custom branch was not changed. Resolve locally before retrying.' >> "$GITHUB_STEP_SUMMARY"
             git diff --name-only --diff-filter=U >> "$GITHUB_STEP_SUMMARY"
             exit 1
