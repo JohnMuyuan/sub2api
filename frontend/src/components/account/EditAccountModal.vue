@@ -1768,17 +1768,38 @@
             class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
         </div>
-        <div v-if="accountSchedulingThresholdOverrideEnabled">
-          <label class="input-label">{{ t('admin.accounts.accountSchedulingThresholdOverrideValue') }}</label>
-          <input
-            v-model.number="accountSchedulingThresholdOverrideValue"
-            data-testid="account-scheduling-threshold-override-value"
-            type="number"
-            min="1"
-            max="100"
-            class="input"
+        <div v-if="accountSchedulingThresholdOverrideEnabled" class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.settings.schedulingThresholdRange.accountToggle') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.schedulingThresholdRange.accountToggleHint') }}
+              </p>
+            </div>
+            <input
+              v-model="accountSchedulingThresholdRangeEnabled"
+              data-testid="account-scheduling-threshold-range-enabled"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+          </div>
+          <SchedulingThresholdRangeFields
+            v-if="accountSchedulingThresholdRangeEnabled"
+            v-model="accountSchedulingThresholdRangeValue"
+            test-id-prefix="account-scheduling-threshold-range"
           />
-          <p class="input-hint">{{ t('admin.accounts.accountSchedulingThresholdOverrideDisabledHint') }}</p>
+          <div v-else>
+            <label class="input-label">{{ t('admin.accounts.accountSchedulingThresholdOverrideValue') }}</label>
+            <input
+              v-model.number="accountSchedulingThresholdOverrideValue"
+              data-testid="account-scheduling-threshold-override-value"
+              type="number"
+              min="1"
+              max="100"
+              class="input"
+            />
+            <p class="input-hint">{{ t('admin.accounts.accountSchedulingThresholdOverrideDisabledHint') }}</p>
+          </div>
         </div>
       </div>
 
@@ -3543,6 +3564,13 @@ import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import { DEFAULT_EXCEL_BPS_MODELS, VERTEX_LOCATION_OPTIONS } from '@/constants/account'
+import SchedulingThresholdRangeFields from '@/components/settings/SchedulingThresholdRangeFields.vue'
+import {
+  DEFAULT_SCHEDULING_THRESHOLD_RANGE,
+  isValidSchedulingThresholdRange,
+  parseSchedulingThresholdRange,
+  type SchedulingThresholdRangeValue
+} from '@/utils/schedulingThresholdRange'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
@@ -4065,6 +4093,9 @@ const tempUnschedEnabled = ref(false)
 const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
 const ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY = 'account_scheduling_threshold'
+const ACCOUNT_SCHEDULING_THRESHOLD_RANGE_CREDENTIAL_KEY = 'account_scheduling_threshold_range'
+const accountSchedulingThresholdRangeEnabled = ref(false)
+const accountSchedulingThresholdRangeValue = ref<SchedulingThresholdRangeValue>({ ...DEFAULT_SCHEDULING_THRESHOLD_RANGE })
 const supportsAccountSchedulingThresholdOverride = computed(() =>
   supportsAccountSchedulingThresholdOverridePlatform(props.account?.platform)
 )
@@ -5369,6 +5400,9 @@ function loadAccountSchedulingThresholdOverride(
   platform: Account['platform'] | undefined,
   credentials: Record<string, unknown> | undefined
 ) {
+  const range = parseSchedulingThresholdRange(credentials?.[ACCOUNT_SCHEDULING_THRESHOLD_RANGE_CREDENTIAL_KEY])
+  accountSchedulingThresholdRangeEnabled.value = range !== null
+  accountSchedulingThresholdRangeValue.value = range ?? { ...DEFAULT_SCHEDULING_THRESHOLD_RANGE }
   if (!supportsAccountSchedulingThresholdOverridePlatform(platform)) {
     accountSchedulingThresholdOverrideEnabled.value = false
     accountSchedulingThresholdOverrideValue.value = 100
@@ -5377,7 +5411,7 @@ function loadAccountSchedulingThresholdOverride(
   const value = normalizeAccountSchedulingThresholdOverride(
     credentials?.[ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY]
   )
-  accountSchedulingThresholdOverrideEnabled.value = value !== null
+  accountSchedulingThresholdOverrideEnabled.value = value !== null || range !== null
   accountSchedulingThresholdOverrideValue.value = value ?? 100
 }
 
@@ -5392,6 +5426,18 @@ const applyAccountSchedulingThresholdOverridePatch = (
   const current = normalizeAccountSchedulingThresholdOverride(
     currentCredentials[ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY]
   )
+  const hasRange = currentCredentials[ACCOUNT_SCHEDULING_THRESHOLD_RANGE_CREDENTIAL_KEY] != null
+  const useRange = accountSchedulingThresholdOverrideEnabled.value && accountSchedulingThresholdRangeEnabled.value
+  if (useRange) {
+    // The range minimum also goes into the fixed key so builds without range
+    // support still pause at the conservative end.
+    credentials[ACCOUNT_SCHEDULING_THRESHOLD_RANGE_CREDENTIAL_KEY] = { ...accountSchedulingThresholdRangeValue.value }
+    credentials[ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY] = accountSchedulingThresholdRangeValue.value.min
+    return
+  }
+  if (hasRange) {
+    credentials[ACCOUNT_SCHEDULING_THRESHOLD_RANGE_CREDENTIAL_KEY] = null
+  }
   if (!accountSchedulingThresholdOverrideEnabled.value) {
     if (current !== null) {
       credentials[ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY] = null
@@ -5729,6 +5775,15 @@ const handleSubmit = async () => {
       appStore.showError(t('admin.accounts.openai.excelBPS403SelectTarget'))
       return
     }
+  }
+  if (
+    supportsAccountSchedulingThresholdOverride.value &&
+    accountSchedulingThresholdOverrideEnabled.value &&
+    accountSchedulingThresholdRangeEnabled.value &&
+    !isValidSchedulingThresholdRange(accountSchedulingThresholdRangeValue.value)
+  ) {
+    appStore.showError(t('admin.settings.schedulingThresholdRange.invalidAccount'))
+    return
   }
   const autoBPSError = autoBPSSupported.value ? autoBPS.validate() : ''
   if (autoBPSError) {

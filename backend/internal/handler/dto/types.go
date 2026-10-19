@@ -336,6 +336,9 @@ type Account struct {
 
 	GroupIDs []int64  `json:"group_ids,omitempty"`
 	Groups   []*Group `json:"groups,omitempty"`
+	// SchedulingThresholdRounds is this round's drawn pause threshold per window
+	// when a random threshold range applies.
+	SchedulingThresholdRounds []service.AccountSchedulingThresholdRound `json:"scheduling_threshold_rounds,omitempty"`
 }
 
 // AccountListItem is the compact representation returned by the admin account
@@ -436,6 +439,9 @@ type AccountListItem struct {
 
 	Proxy    *Proxy  `json:"proxy,omitempty"`
 	GroupIDs []int64 `json:"group_ids,omitempty"`
+	// SchedulingThresholdRounds is this round's drawn pause threshold per window
+	// when a random threshold range applies.
+	SchedulingThresholdRounds []service.AccountSchedulingThresholdRound `json:"scheduling_threshold_rounds,omitempty"`
 }
 
 type AccountGroup struct {

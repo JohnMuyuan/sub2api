@@ -489,7 +489,7 @@ func AccountListItemFromAccount(a *Account) *AccountListItem {
 		ID: a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
 		Credentials: a.Credentials, CredentialsStatus: a.CredentialsStatus, Extra: a.Extra,
 		ExcelBPSCredentialState: a.ExcelBPSCredentialState,
-		OllamaCloudUsage:        a.OllamaCloudUsage, CodexTurnTickets: a.CodexTurnTickets,
+		OllamaCloudUsage:        a.OllamaCloudUsage, CodexTurnTickets: a.CodexTurnTickets, SchedulingThresholdRounds: a.SchedulingThresholdRounds,
 		ProxyID: a.ProxyID, ProxyFallbackOriginID: a.ProxyFallbackOriginID, ProxyFallbackOriginName: a.ProxyFallbackOriginName,
 		Concurrency: a.Concurrency, LoadFactor: a.LoadFactor, Priority: a.Priority, RateMultiplier: a.RateMultiplier, GroupRateMultiplier: a.GroupRateMultiplier,
 		OpenCodeGoUsage: a.OpenCodeGoUsage,
