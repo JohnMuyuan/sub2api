@@ -1,4 +1,5 @@
 import { apiClient } from '@/api/client'
+import type { SchedulingThresholdWindowRules } from '@/utils/schedulingThresholdRange'
 
 export interface AccountSchedulingThresholdRange {
   enabled: boolean
@@ -9,18 +10,27 @@ export interface AccountSchedulingThresholdRange {
 
 export type AccountSchedulingThresholdRanges = Record<string, AccountSchedulingThresholdRange>
 
+// Platform -> window -> rule.
+export type AccountSchedulingThresholdWindowRuleMap = Record<string, SchedulingThresholdWindowRules>
+
+export interface AccountSchedulingThresholdCustomSettings {
+  ranges: AccountSchedulingThresholdRanges
+  window_rules: AccountSchedulingThresholdWindowRuleMap
+}
+
+const ENDPOINT = '/admin/settings/account-scheduling-threshold-ranges'
+
+function normalize(data: Partial<AccountSchedulingThresholdCustomSettings>): AccountSchedulingThresholdCustomSettings {
+  return { ranges: data.ranges ?? {}, window_rules: data.window_rules ?? {} }
+}
+
 export const accountSchedulingThresholdRangesAPI = {
-  async get(): Promise<AccountSchedulingThresholdRanges> {
-    const { data } = await apiClient.get<{ ranges: AccountSchedulingThresholdRanges }>(
-      '/admin/settings/account-scheduling-threshold-ranges'
-    )
-    return data.ranges ?? {}
+  async get(): Promise<AccountSchedulingThresholdCustomSettings> {
+    const { data } = await apiClient.get<Partial<AccountSchedulingThresholdCustomSettings>>(ENDPOINT)
+    return normalize(data)
   },
-  async save(ranges: AccountSchedulingThresholdRanges): Promise<AccountSchedulingThresholdRanges> {
-    const { data } = await apiClient.put<{ ranges: AccountSchedulingThresholdRanges }>(
-      '/admin/settings/account-scheduling-threshold-ranges',
-      { ranges }
-    )
-    return data.ranges ?? {}
+  async save(settings: AccountSchedulingThresholdCustomSettings): Promise<AccountSchedulingThresholdCustomSettings> {
+    const { data } = await apiClient.put<Partial<AccountSchedulingThresholdCustomSettings>>(ENDPOINT, settings)
+    return normalize(data)
   }
 }

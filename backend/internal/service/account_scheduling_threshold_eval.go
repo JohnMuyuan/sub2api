@@ -58,12 +58,12 @@ func EvaluateAccountSchedulingThresholdWithPolicy(account *Account, policy Accou
 	rule, ok := resolveAccountSchedulingThresholdRule(account, policy, decision.Platform)
 	threshold := rule.basePercent()
 	decision.ThresholdPercent = threshold
-	if !ok || rule.disabled() {
+	if (!ok || rule.disabled()) && !hasAccountSchedulingThresholdWindowRules(account, policy, decision.Platform) {
 		return decision
 	}
 
 	candidates := accountSchedulingThresholdPlatformCandidates(account, decision.Platform, now)
-	decision.FullDrawExtraUpdates = applyAccountSchedulingThresholdRule(account, rule, candidates, policy.location(), now)
+	decision.FullDrawExtraUpdates = applyAccountSchedulingThresholdRules(account, policy, decision.Platform, candidates, now)
 	winner := pickLatestResetSchedulingCandidate(candidates, threshold, now)
 	if winner == nil {
 		return decision
@@ -103,13 +103,13 @@ func evaluateAnthropicFableSchedulingThresholdWithPolicy(account *Account, polic
 	rule, ok := resolveAccountSchedulingThresholdRule(account, policy, PlatformAnthropic)
 	threshold := rule.basePercent()
 	decision.ThresholdPercent = threshold
-	if !ok || rule.disabled() {
+	if (!ok || rule.disabled()) && !hasAccountSchedulingThresholdWindowRules(account, policy, PlatformAnthropic) {
 		return decision
 	}
 
 	candidate := anthropicFableThresholdCandidate(account)
 	if candidate != nil {
-		decision.FullDrawExtraUpdates = applyAccountSchedulingThresholdRule(account, rule, []*accountSchedulingThresholdCandidate{candidate}, policy.location(), now)
+		decision.FullDrawExtraUpdates = applyAccountSchedulingThresholdRules(account, policy, PlatformAnthropic, []*accountSchedulingThresholdCandidate{candidate}, now)
 	}
 	if !candidateMatchesThreshold(candidate, threshold, now) {
 		return decision

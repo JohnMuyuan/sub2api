@@ -6,8 +6,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// accountWindowPrimeResponse adds the built-in model choices to the settings.
+type accountWindowPrimeResponse struct {
+	service.AccountWindowPrimeSettings
+	ModelOptions map[string][]string `json:"model_options"`
+}
+
 func (h *SettingHandler) GetAccountWindowPrime(c *gin.Context) {
-	response.Success(c, h.settingService.GetAccountWindowPrimeSettings(c.Request.Context()))
+	response.Success(c, accountWindowPrimeResponse{
+		AccountWindowPrimeSettings: h.settingService.GetAccountWindowPrimeSettings(c.Request.Context()),
+		ModelOptions:               service.AccountWindowPrimeModelOptions(),
+	})
 }
 
 func (h *SettingHandler) UpdateAccountWindowPrime(c *gin.Context) {
@@ -21,5 +30,5 @@ func (h *SettingHandler) UpdateAccountWindowPrime(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, settings)
+	response.Success(c, accountWindowPrimeResponse{AccountWindowPrimeSettings: settings, ModelOptions: service.AccountWindowPrimeModelOptions()})
 }

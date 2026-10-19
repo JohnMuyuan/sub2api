@@ -58,7 +58,7 @@ jobs:
           go test -tags unit ./internal/service -run TestAccountWindowPrime -count=1
           go test ./internal/reauthruntime -count=1
           go test ./internal/repository -run 'Test(EnsureBootstrapSecrets|PgDumperRestoreStopsOnSQLFailure)' -count=1
-          go test -tags unit ./internal/service ./internal/repository -run 'TestRandomSchedulingThreshold|AccountSchedulingThreshold' -count=1
+          go test -tags unit ./internal/service ./internal/repository -run 'TestRandomSchedulingThreshold|TestPerWindowSchedulingThreshold|AccountSchedulingThreshold' -count=1
       - name: Verify custom release notes and README merges
         run: python -m unittest discover -s .github/release-tools -p 'test_custom_*.py'
       - name: Verify persistent Docker updates

@@ -13,8 +13,9 @@ export interface AccountWindowPrimeSettings {
   active_hours_start: string
   active_hours_end: string
   prompts: string[]
-  // Returned by the server for placeholders; ignored on save.
+  // Returned by the server for the model pickers; ignored on save.
   default_models?: Record<string, string>
+  model_options?: Record<string, string[]>
 }
 
 export const accountWindowPrimeAPI = {

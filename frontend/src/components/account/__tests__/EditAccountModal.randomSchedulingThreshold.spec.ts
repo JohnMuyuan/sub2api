@@ -165,3 +165,50 @@ describe('EditAccountModal random scheduling threshold', () => {
     expect(updateAccountMock).not.toHaveBeenCalled()
   })
 })
+
+describe('EditAccountModal per-window scheduling thresholds', () => {
+  beforeEach(() => {
+    updateAccountMock.mockReset()
+    showErrorMock.mockReset()
+    updateAccountMock.mockImplementation(async (_id, payload) => ({ ...buildAccount(), ...payload }))
+  })
+
+  it('saves a window rule next to the account default', async () => {
+    const wrapper = mountModal()
+    await wrapper.get(sel('account-scheduling-threshold-override-enabled')).setValue(true)
+    await wrapper.get(sel('account-scheduling-threshold-override-value')).setValue('95')
+    await wrapper.get(sel('account-scheduling-threshold-window-quota-mode')).setValue('fixed')
+    await wrapper.get(sel('account-scheduling-threshold-window-quota-threshold')).setValue('80')
+
+    await submit(wrapper)
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledTimes(1))
+    expect(updateAccountMock.mock.calls[0]?.[1].credentials).toMatchObject({
+      account_scheduling_threshold: 95,
+      account_scheduling_threshold_windows: { quota: { mode: 'fixed', threshold: 80 } }
+    })
+  })
+
+  it('loads stored window rules and removes them with the override', async () => {
+    const wrapper = mountModal(buildAccount({
+      account_scheduling_threshold: 90,
+      account_scheduling_threshold_windows: { quota: { mode: 'random', min: 70, max: 80, full_monthly_limit: 0 } }
+    }))
+    expect((wrapper.get(sel('account-scheduling-threshold-window-quota-mode')).element as HTMLSelectElement).value).toBe('random')
+    expect((wrapper.get(sel('account-scheduling-threshold-window-quota-min')).element as HTMLInputElement).value).toBe('70')
+
+    await wrapper.get(sel('account-scheduling-threshold-override-enabled')).setValue(false)
+    await submit(wrapper)
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledTimes(1))
+    expect(updateAccountMock.mock.calls[0]?.[1].credentials.account_scheduling_threshold_windows).toBeNull()
+  })
+
+  it('blocks saving an invalid window rule', async () => {
+    const wrapper = mountModal()
+    await wrapper.get(sel('account-scheduling-threshold-override-enabled')).setValue(true)
+    await wrapper.get(sel('account-scheduling-threshold-window-quota-mode')).setValue('fixed')
+    await wrapper.get(sel('account-scheduling-threshold-window-quota-threshold')).setValue('101')
+    await submit(wrapper)
+    expect(showErrorMock).toHaveBeenCalledWith('admin.settings.schedulingThresholdRange.windowRules.invalid')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+  })
+})

@@ -78,12 +78,13 @@ func (r AccountSchedulingThresholdRange) valid() bool {
 }
 
 // AccountSchedulingThresholdPolicy is everything the evaluator needs besides
-// the account: fixed platform thresholds, platform ranges and the timezone that
-// defines calendar months for the full-draw limit.
+// the account: fixed platform thresholds, platform ranges, platform per-window
+// rules and the timezone that defines calendar months for the full-draw limit.
 type AccountSchedulingThresholdPolicy struct {
-	Thresholds map[string]int
-	Ranges     map[string]AccountSchedulingThresholdRange
-	Location   *time.Location
+	Thresholds  map[string]int
+	Ranges      map[string]AccountSchedulingThresholdRange
+	WindowRules map[string]map[string]AccountSchedulingThresholdWindowRule
+	Location    *time.Location
 }
 
 func (p AccountSchedulingThresholdPolicy) location() *time.Location {
@@ -114,15 +115,27 @@ func (r accountSchedulingThresholdRule) disabled() bool {
 	return r.basePercent() >= 100
 }
 
-// resolveAccountSchedulingThresholdRule picks, in order: the account range, the
-// account fixed override, the platform range, the platform fixed threshold.
+// resolveAccountSchedulingThresholdRule picks the default rule, ignoring
+// per-window rules: the account range, the account fixed override, the platform
+// range, the platform fixed threshold.
 func resolveAccountSchedulingThresholdRule(account *Account, policy AccountSchedulingThresholdPolicy, platform string) (accountSchedulingThresholdRule, bool) {
+	if rule, ok := accountSchedulingThresholdDefaultOverride(account); ok {
+		return rule, true
+	}
+	return platformSchedulingThresholdDefault(policy, platform)
+}
+
+func accountSchedulingThresholdDefaultOverride(account *Account) (accountSchedulingThresholdRule, bool) {
 	if r, ok := accountSchedulingThresholdRangeOverride(account); ok {
 		return accountSchedulingThresholdRule{random: &r}, true
 	}
 	if threshold, ok := accountSchedulingThresholdOverride(account); ok {
 		return accountSchedulingThresholdRule{fixed: threshold}, true
 	}
+	return accountSchedulingThresholdRule{}, false
+}
+
+func platformSchedulingThresholdDefault(policy AccountSchedulingThresholdPolicy, platform string) (accountSchedulingThresholdRule, bool) {
 	if r, ok := policy.Ranges[platform]; ok && r.Enabled && r.valid() {
 		return accountSchedulingThresholdRule{random: &r}, true
 	}
@@ -277,13 +290,20 @@ func readAccountSchedulingThresholdFullDrawRecord(raw any) accountSchedulingThre
 	return record
 }
 
-// applyAccountSchedulingThresholdRule assigns every candidate the threshold it
-// uses this round and returns the full-draw records that still need saving.
-// Windows that already reset are skipped so they never use up the monthly limit.
-func applyAccountSchedulingThresholdRule(account *Account, rule accountSchedulingThresholdRule, candidates []*accountSchedulingThresholdCandidate, loc *time.Location, now time.Time) map[string]any {
+// applyAccountSchedulingThresholdRules assigns every candidate the threshold its
+// window uses this round (100 when no rule applies, which never pauses) and
+// returns the full-draw records that still need saving. Windows that already
+// reset are skipped so they never use up the monthly limit.
+func applyAccountSchedulingThresholdRules(account *Account, policy AccountSchedulingThresholdPolicy, platform string, candidates []*accountSchedulingThresholdCandidate, now time.Time) map[string]any {
 	var updates map[string]any
+	loc := policy.location()
 	for _, candidate := range candidates {
 		if candidate == nil {
+			continue
+		}
+		rule, _, ok := resolveAccountSchedulingThresholdWindowRule(account, policy, platform, candidate.window)
+		if !ok {
+			candidate.threshold = 100
 			continue
 		}
 		if rule.random == nil || candidate.until == nil || !candidate.until.After(now) {
@@ -303,9 +323,11 @@ func applyAccountSchedulingThresholdRule(account *Account, rule accountSchedulin
 }
 
 // AccountSchedulingThresholdRound is the threshold an account uses in one of its
-// current windows, shown in the account list when a random range applies.
+// current windows, shown in the account list when a random range or a
+// per-window rule applies. Range fields are zero for fixed rules.
 type AccountSchedulingThresholdRound struct {
 	Window           string    `json:"window"`
+	Mode             string    `json:"mode"`
 	Scope            string    `json:"scope,omitempty"`
 	ThresholdPercent int       `json:"threshold_percent"`
 	UsedPercent      float64   `json:"used_percent"`
@@ -316,19 +338,15 @@ type AccountSchedulingThresholdRound struct {
 	FullDrawsUsed    int       `json:"full_draws_used"`
 }
 
-// AccountSchedulingThresholdRounds lists this round's drawn threshold for each
-// window that still has a future reset. It returns nil unless a random range
-// applies, and never persists anything.
+// AccountSchedulingThresholdRounds lists this round's threshold for each window
+// that still has a future reset. It returns nil unless some window uses a random
+// range or a per-window rule, and never persists anything.
 func AccountSchedulingThresholdRounds(account *Account, policy AccountSchedulingThresholdPolicy, now time.Time) []AccountSchedulingThresholdRound {
 	if account == nil {
 		return nil
 	}
 	platform := strings.ToLower(strings.TrimSpace(account.Platform))
 	if !isAllowedSchedulingThresholdPlatform(platform) {
-		return nil
-	}
-	rule, ok := resolveAccountSchedulingThresholdRule(account, policy, platform)
-	if !ok || rule.random == nil {
 		return nil
 	}
 
@@ -338,22 +356,37 @@ func AccountSchedulingThresholdRounds(account *Account, policy AccountScheduling
 	}
 	loc := policy.location()
 	var rounds []AccountSchedulingThresholdRound
+	notable := false
 	for _, candidate := range candidates {
 		if candidate == nil || candidate.until == nil || !candidate.until.After(now) {
 			continue
 		}
-		draw := drawAccountSchedulingThreshold(account, *rule.random, candidate.window, candidate.scope, *candidate.until, loc)
-		rounds = append(rounds, AccountSchedulingThresholdRound{
+		rule, windowSpecific, ok := resolveAccountSchedulingThresholdWindowRule(account, policy, platform, candidate.window)
+		if !ok {
+			continue
+		}
+		round := AccountSchedulingThresholdRound{
 			Window:           candidate.window,
+			Mode:             AccountSchedulingThresholdModeFixed,
 			Scope:            candidate.scope,
-			ThresholdPercent: draw.percent,
+			ThresholdPercent: rule.fixed,
 			UsedPercent:      candidate.usedPercent,
 			ResetsAt:         candidate.until.UTC(),
-			RangeMin:         rule.random.Min,
-			RangeMax:         rule.random.Max,
-			FullMonthlyLimit: rule.random.FullMonthlyLimit,
-			FullDrawsUsed:    draw.fullDrawsUsed,
-		})
+		}
+		if rule.random != nil {
+			draw := drawAccountSchedulingThreshold(account, *rule.random, candidate.window, candidate.scope, *candidate.until, loc)
+			round.Mode = AccountSchedulingThresholdModeRandom
+			round.ThresholdPercent = draw.percent
+			round.RangeMin = rule.random.Min
+			round.RangeMax = rule.random.Max
+			round.FullMonthlyLimit = rule.random.FullMonthlyLimit
+			round.FullDrawsUsed = draw.fullDrawsUsed
+		}
+		notable = notable || windowSpecific || rule.random != nil
+		rounds = append(rounds, round)
+	}
+	if !notable {
+		return nil
 	}
 	sort.SliceStable(rounds, func(i, j int) bool { return rounds[i].ResetsAt.Before(rounds[j].ResetsAt) })
 	return rounds

@@ -38,6 +38,7 @@
         :max="MAX_FULL_MONTHLY_LIMIT"
         step="1"
         class="input"
+        :placeholder="t('admin.settings.schedulingThresholdRange.fullMonthlyLimitPlaceholder')"
         :data-testid="`${testIdPrefix}-full-monthly-limit`"
         @input="update('full_monthly_limit', $event)"
       />

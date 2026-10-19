@@ -22,12 +22,11 @@
             <Toggle v-model="form.platforms[platform].enabled" :data-testid="`window-prime-${platform}-enabled`" />
           </div>
           <label class="input-label mt-3">{{ t('admin.settings.windowPrime.model') }}</label>
-          <input
+          <WindowPrimeModelSelect
             v-model="form.platforms[platform].model"
-            type="text"
-            class="input"
-            :placeholder="t('admin.settings.windowPrime.modelPlaceholder', { model: defaultModels[platform] ?? '' })"
-            :data-testid="`window-prime-${platform}-model`"
+            :options="modelOptions[platform] ?? []"
+            :empty-label="t('admin.settings.windowPrime.modelDefault', { model: defaultModels[platform] ?? '' })"
+            :test-id="`window-prime-${platform}-model`"
           />
         </div>
       </div>
@@ -112,6 +111,7 @@
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Toggle from '@/components/common/Toggle.vue'
+import WindowPrimeModelSelect from './WindowPrimeModelSelect.vue'
 import { accountWindowPrimeAPI, type AccountWindowPrimeSettings } from '@/api/admin/accountWindowPrime'
 import {
   MAX_WINDOW_PRIME_DELAY_MINUTES,
@@ -125,6 +125,7 @@ import {
 const { t } = useI18n()
 const form = ref<AccountWindowPrimeSettings | null>(null)
 const defaultModels = ref<Record<string, string>>({})
+const modelOptions = ref<Record<string, string[]>>({})
 const promptsText = ref('')
 const loading = ref(false)
 const error = ref('')
@@ -136,6 +137,7 @@ function apply(settings: AccountWindowPrimeSettings) {
     platforms[platform] = { enabled: settings.platforms?.[platform]?.enabled === true, model: settings.platforms?.[platform]?.model ?? '' }
   }
   defaultModels.value = settings.default_models ?? {}
+  modelOptions.value = settings.model_options ?? {}
   form.value = { ...settings, platforms }
   promptsText.value = (settings.prompts ?? []).join('\n')
 }
@@ -159,6 +161,7 @@ async function save() {
   const prompts = splitWindowPrimePrompts(promptsText.value)
   const settings = { ...form.value, prompts }
   delete settings.default_models
+  delete settings.model_options
   if (
     !isValidWindowPrimeDelay(settings.delay_min_minutes, settings.delay_max_minutes) ||
     !isValidWindowPrimeClock(settings.active_hours_start) ||

@@ -363,3 +363,9 @@ func TestAccountWindowPrime_SettingServiceRoundTrip(t *testing.T) {
 	_, err = svc.SetAccountWindowPrimeSettings(context.Background(), input)
 	require.Error(t, err)
 }
+
+func TestAccountWindowPrime_ModelOptionsIncludeDefaults(t *testing.T) {
+	options := AccountWindowPrimeModelOptions()
+	require.Contains(t, options[PlatformOpenAI], "gpt-5.4-mini")
+	require.Contains(t, options[PlatformAnthropic], "claude-haiku-4-5-20251001")
+}

@@ -38,3 +38,10 @@ describe('SchedulingThresholdRounds', () => {
     expect(chips[1].attributes('title')).toContain('"used":1,"limit":2')
   })
 })
+
+describe('SchedulingThresholdRounds fixed windows', () => {
+  it('uses the fixed tooltip for fixed windows', () => {
+    const wrapper = mount(SchedulingThresholdRounds, { props: { rounds: [{ ...round('7d', 90), mode: 'fixed' as const }] } })
+    expect(wrapper.get('[data-testid="scheduling-threshold-round"]').attributes('title')).toContain('rounds.fixedTooltip')
+  })
+})

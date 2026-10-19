@@ -1800,6 +1800,13 @@
             />
             <p class="input-hint">{{ t('admin.accounts.accountSchedulingThresholdOverrideDisabledHint') }}</p>
           </div>
+          <SchedulingThresholdWindowRules
+            v-model="accountSchedulingThresholdWindowRules"
+            class="border-t border-gray-100 pt-3 dark:border-dark-700"
+            :platform="account?.platform"
+            account
+            test-id-prefix="account-scheduling-threshold-window"
+          />
         </div>
       </div>
 
@@ -1835,7 +1842,7 @@
         </div>
       </div>
 
-      <AccountWindowPrimeFields v-if="supportsWindowPrime" v-model="accountWindowPrime" />
+      <AccountWindowPrimeFields v-if="supportsWindowPrime" v-model="accountWindowPrime" :account-id="account?.id" />
 
       <div v-if="!isSparkShadow && !authStore.isObserver">
         <div class="mb-1 flex items-center gap-2">
@@ -3575,10 +3582,14 @@ import {
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import { DEFAULT_EXCEL_BPS_MODELS, VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import SchedulingThresholdRangeFields from '@/components/settings/SchedulingThresholdRangeFields.vue'
+import SchedulingThresholdWindowRules from '@/components/settings/SchedulingThresholdWindowRules.vue'
 import {
   DEFAULT_SCHEDULING_THRESHOLD_RANGE,
   isValidSchedulingThresholdRange,
+  isValidSchedulingThresholdWindowRules,
   parseSchedulingThresholdRange,
+  parseSchedulingThresholdWindowRules,
+  type SchedulingThresholdWindowRules as ThresholdWindowRules,
   type SchedulingThresholdRangeValue
 } from '@/utils/schedulingThresholdRange'
 import {
@@ -4106,6 +4117,8 @@ const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
 const ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY = 'account_scheduling_threshold'
 const ACCOUNT_SCHEDULING_THRESHOLD_RANGE_CREDENTIAL_KEY = 'account_scheduling_threshold_range'
+const ACCOUNT_SCHEDULING_THRESHOLD_WINDOWS_CREDENTIAL_KEY = 'account_scheduling_threshold_windows'
+const accountSchedulingThresholdWindowRules = ref<ThresholdWindowRules>({})
 const accountSchedulingThresholdRangeEnabled = ref(false)
 const accountSchedulingThresholdRangeValue = ref<SchedulingThresholdRangeValue>({ ...DEFAULT_SCHEDULING_THRESHOLD_RANGE })
 const supportsAccountSchedulingThresholdOverride = computed(() =>
@@ -5416,6 +5429,11 @@ function loadAccountSchedulingThresholdOverride(
   const range = parseSchedulingThresholdRange(credentials?.[ACCOUNT_SCHEDULING_THRESHOLD_RANGE_CREDENTIAL_KEY])
   accountSchedulingThresholdRangeEnabled.value = range !== null
   accountSchedulingThresholdRangeValue.value = range ?? { ...DEFAULT_SCHEDULING_THRESHOLD_RANGE }
+  accountSchedulingThresholdWindowRules.value = parseSchedulingThresholdWindowRules(
+    credentials?.[ACCOUNT_SCHEDULING_THRESHOLD_WINDOWS_CREDENTIAL_KEY],
+    platform
+  )
+  const hasWindowRules = Object.keys(accountSchedulingThresholdWindowRules.value).length > 0
   if (!supportsAccountSchedulingThresholdOverridePlatform(platform)) {
     accountSchedulingThresholdOverrideEnabled.value = false
     accountSchedulingThresholdOverrideValue.value = 100
@@ -5424,7 +5442,7 @@ function loadAccountSchedulingThresholdOverride(
   const value = normalizeAccountSchedulingThresholdOverride(
     credentials?.[ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY]
   )
-  accountSchedulingThresholdOverrideEnabled.value = value !== null || range !== null
+  accountSchedulingThresholdOverrideEnabled.value = value !== null || range !== null || hasWindowRules
   accountSchedulingThresholdOverrideValue.value = value ?? 100
 }
 
@@ -5441,6 +5459,12 @@ const applyAccountSchedulingThresholdOverridePatch = (
   )
   const hasRange = currentCredentials[ACCOUNT_SCHEDULING_THRESHOLD_RANGE_CREDENTIAL_KEY] != null
   const useRange = accountSchedulingThresholdOverrideEnabled.value && accountSchedulingThresholdRangeEnabled.value
+  const windowRules = accountSchedulingThresholdOverrideEnabled.value ? accountSchedulingThresholdWindowRules.value : {}
+  if (Object.keys(windowRules).length > 0) {
+    credentials[ACCOUNT_SCHEDULING_THRESHOLD_WINDOWS_CREDENTIAL_KEY] = { ...windowRules }
+  } else if (currentCredentials[ACCOUNT_SCHEDULING_THRESHOLD_WINDOWS_CREDENTIAL_KEY] != null) {
+    credentials[ACCOUNT_SCHEDULING_THRESHOLD_WINDOWS_CREDENTIAL_KEY] = null
+  }
   if (useRange) {
     // The range minimum also goes into the fixed key so builds without range
     // support still pause at the conservative end.
@@ -5796,6 +5820,14 @@ const handleSubmit = async () => {
     !isValidSchedulingThresholdRange(accountSchedulingThresholdRangeValue.value)
   ) {
     appStore.showError(t('admin.settings.schedulingThresholdRange.invalidAccount'))
+    return
+  }
+  if (
+    supportsAccountSchedulingThresholdOverride.value &&
+    accountSchedulingThresholdOverrideEnabled.value &&
+    !isValidSchedulingThresholdWindowRules(accountSchedulingThresholdWindowRules.value)
+  ) {
+    appStore.showError(t('admin.settings.schedulingThresholdRange.windowRules.invalid'))
     return
   }
   const autoBPSError = autoBPSSupported.value ? autoBPS.validate() : ''
