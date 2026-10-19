@@ -175,10 +175,11 @@ func (s *RateLimitService) ApplyAccountSchedulingThreshold(ctx context.Context, 
 	}
 
 	now := time.Now().UTC()
-	thresholds := s.settingService.GetAccountSchedulingThresholds(ctx)
-	decision := EvaluateAccountSchedulingThreshold(account, thresholds, now)
+	policy := s.settingService.GetAccountSchedulingThresholdPolicy(ctx)
+	decision := EvaluateAccountSchedulingThresholdWithPolicy(account, policy, now)
+	s.recordAccountSchedulingThresholdFullDraws(ctx, account, decision.FullDrawExtraUpdates)
 	if !decision.ShouldPause || decision.Until == nil || !decision.Until.After(now) {
-		s.applyAnthropicFableSchedulingThreshold(ctx, account, thresholds, now)
+		s.applyAnthropicFableSchedulingThreshold(ctx, account, policy, now)
 		return false
 	}
 
@@ -232,8 +233,9 @@ func (s *RateLimitService) ApplyAccountSchedulingThreshold(ctx context.Context, 
 	return true
 }
 
-func (s *RateLimitService) applyAnthropicFableSchedulingThreshold(ctx context.Context, account *Account, thresholds map[string]int, now time.Time) {
-	decision := evaluateAnthropicFableSchedulingThreshold(account, thresholds, now)
+func (s *RateLimitService) applyAnthropicFableSchedulingThreshold(ctx context.Context, account *Account, policy AccountSchedulingThresholdPolicy, now time.Time) {
+	decision := evaluateAnthropicFableSchedulingThresholdWithPolicy(account, policy, now)
+	s.recordAccountSchedulingThresholdFullDraws(ctx, account, decision.FullDrawExtraUpdates)
 	if !decision.ShouldPause || decision.Until == nil || !decision.Until.After(now) {
 		return
 	}

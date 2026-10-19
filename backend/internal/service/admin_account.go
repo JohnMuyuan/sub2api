@@ -154,6 +154,13 @@ var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	"codex_7d_reset_after_seconds":         {},
 	"codex_7d_window_minutes":              {},
 	"codex_7d_reset_at":                    {},
+	// Random scheduling threshold full draws are counted per account.
+	"scheduling_threshold_full_draws_5h":      {},
+	"scheduling_threshold_full_draws_7d":      {},
+	"scheduling_threshold_full_draws_7d_oi":   {},
+	"scheduling_threshold_full_draws_quota":   {},
+	"scheduling_threshold_full_draws_weekly":  {},
+	"scheduling_threshold_full_draws_monthly": {},
 	// The last window-priming attempt belongs to the source account.
 	"window_prime_state": {},
 }

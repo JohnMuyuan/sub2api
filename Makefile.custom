@@ -9,4 +9,8 @@ FRONTEND_CRITICAL_VITEST += \
 	src/utils/__tests__/siteTimezone.spec.ts \
 	src/utils/__tests__/formatDateLocalInput.spec.ts \
 	src/components/settings/SystemTimezoneSettings.spec.ts \
-	src/stores/__tests__/auth.spec.ts
+	src/stores/__tests__/auth.spec.ts \
+	src/utils/__tests__/schedulingThresholdRange.spec.ts \
+	src/components/settings/AccountSchedulingThresholdRangeSettings.spec.ts \
+	src/components/account/__tests__/SchedulingThresholdRounds.spec.ts \
+	src/components/account/__tests__/EditAccountModal.randomSchedulingThreshold.spec.ts

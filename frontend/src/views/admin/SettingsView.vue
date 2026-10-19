@@ -5121,6 +5121,10 @@
                 </div>
               </div>
 
+              <AccountSchedulingThresholdRangeSettings
+                :thresholds="form.account_scheduling_thresholds"
+              />
+
               <div
                 v-if="!form.openai_advanced_scheduler_enabled"
                 class="flex items-center justify-between border-t border-gray-100 pt-5 dark:border-dark-700"
@@ -9420,6 +9424,7 @@ import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vu
 import GroupBadge from "@/components/common/GroupBadge.vue";
 import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import SystemTimezoneSettings from "@/components/settings/SystemTimezoneSettings.vue";
+import AccountSchedulingThresholdRangeSettings from "@/components/settings/AccountSchedulingThresholdRangeSettings.vue";
 import RequestTimezoneSettings from "@/components/settings/RequestTimezoneSettings.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import AccountWindowPrimeSettings from "@/components/settings/AccountWindowPrimeSettings.vue";

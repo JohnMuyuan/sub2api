@@ -66,6 +66,8 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"upstream_billing_probe",
 	"upstream_billing_rate_sync",
 	"ollama_cloud_usage",
+	// 随机停调阈值的整月满额抽取记录：只需同步单账号快照，无需重建 bucket。
+	"scheduling_threshold_full_draws_",
 	// 自动开启空闲额度窗口的上次结果：只需同步单账号快照，无需重建 bucket。
 	"window_prime_state",
 }

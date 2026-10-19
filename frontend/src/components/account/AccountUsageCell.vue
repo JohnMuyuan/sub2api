@@ -1,6 +1,7 @@
 <template>
   <div ref="rootRef" v-if="showUsageWindows">
     <ExcelBPSCredentialStatus :state="account.excel_bps_credential_state" />
+    <SchedulingThresholdRounds :rounds="account.scheduling_threshold_rounds" />
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
       v-if="
@@ -678,6 +679,7 @@
 <script setup lang="ts">
 import { getSiteTimeZone } from '@/utils/siteTimezone'
 import ExcelBPSCredentialStatus from './ExcelBPSCredentialStatus.vue'
+import SchedulingThresholdRounds from './SchedulingThresholdRounds.vue'
 import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import { useI18n } from 'vue-i18n'
