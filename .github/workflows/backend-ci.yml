@@ -1,6 +1,11 @@
 name: CI
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
   push:
   pull_request:
 
@@ -12,6 +17,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - name: Check deployment scripts
         run: |
           /bin/bash -n deploy/install.sh deploy/install-mihomo-codex.sh deploy/migrate-mihomo-managed.sh
@@ -26,6 +33,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - name: Check Docker Compose simple mode environment
         run: /bin/sh deploy/tests/docker-compose-simple-mode-env-test.sh
       - uses: actions/setup-go@v6
@@ -48,6 +57,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
@@ -68,6 +79,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
@@ -88,12 +101,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - run: python -m pip install -r .github/release-tools/requirements-release.txt
       - run: python -m unittest discover -s .github/release-tools -p 'test_release_matrix.py'
-      - run: python -m unittest discover -s .github/release-tools -p 'test_custom_release_notes.py'
+      - run: python -m unittest discover -s .github/release-tools -p 'test_custom_*.py'
       - run: bash -n .github/release-tools/release-images.sh
       - run: bash -n deploy/upgrade-k3s.sh
       - run: python -m unittest discover -s deploy/tests -p 'test_upgrade_k3s.py'
@@ -103,6 +118,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
