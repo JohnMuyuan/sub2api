@@ -93,10 +93,6 @@ func accountSchedulingThresholdPlatformCandidates(account *Account, platform str
 	}
 }
 
-func evaluateAnthropicFableSchedulingThreshold(account *Account, thresholds map[string]int, now time.Time) AccountSchedulingThresholdDecision {
-	return evaluateAnthropicFableSchedulingThresholdWithPolicy(account, AccountSchedulingThresholdPolicy{Thresholds: thresholds}, now)
-}
-
 func evaluateAnthropicFableSchedulingThresholdWithPolicy(account *Account, policy AccountSchedulingThresholdPolicy, now time.Time) AccountSchedulingThresholdDecision {
 	decision := AccountSchedulingThresholdDecision{}
 	if account == nil || !strings.EqualFold(strings.TrimSpace(account.Platform), PlatformAnthropic) {
