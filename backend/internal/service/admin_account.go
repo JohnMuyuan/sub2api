@@ -161,6 +161,8 @@ var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	"scheduling_threshold_full_draws_quota":   {},
 	"scheduling_threshold_full_draws_weekly":  {},
 	"scheduling_threshold_full_draws_monthly": {},
+	// The last window-priming attempt belongs to the source account.
+	"window_prime_state": {},
 }
 
 func duplicateAccountExtra(value map[string]any) (map[string]any, error) {

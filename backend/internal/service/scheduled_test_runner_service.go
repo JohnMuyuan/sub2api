@@ -24,6 +24,8 @@ type ScheduledTestRunnerService struct {
 	// groupTests runs the Pelican group tests on the same tick; nil disables them.
 	groupTests   *PelicanGroupTestService
 	candyMonitor *ChannelMonitorV2CandyService
+	// windowPrime starts idle usage windows; nil disables it.
+	windowPrime *accountWindowPrimeRunner
 
 	qualityTrigger *quality5xxTrigger
 	triggerCancel  context.CancelFunc
@@ -75,6 +77,7 @@ func (s *ScheduledTestRunnerService) Start() {
 		}
 		s.cron = c
 		s.cron.Start()
+		s.windowPrime.start()
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] started (tick=every minute)")
 	})
 }
@@ -85,6 +88,7 @@ func (s *ScheduledTestRunnerService) Stop() {
 		return
 	}
 	s.stopOnce.Do(func() {
+		s.windowPrime.stop()
 		if s.qualityTrigger != nil && s.qualityTrigger.queue != nil {
 			defer func() { _ = s.qualityTrigger.queue.Close() }()
 		}
