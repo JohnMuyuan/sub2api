@@ -1,13 +1,9 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
-	src/components/account/__tests__/QuotaDimensionRow.siteTimezone.spec.ts \
-	src/components/common/__tests__/DateRangePicker.siteTimezone.spec.ts \
-	src/utils/__tests__/siteTimezone.spec.ts \
-	src/utils/__tests__/formatDateLocalInput.spec.ts \
-	src/components/settings/SystemTimezoneSettings.spec.ts \
-	src/views/user/__tests__/AccountPoolReadOnlyView.spec.ts \
-	src/stores/__tests__/auth.spec.ts \
+	src/api/admin/__tests__/modelTrace.spec.ts \
+	src/components/admin/account/__tests__/ModelTracePanel.spec.ts \
+	src/components/admin/account/__tests__/IQTestModal.modelTrace.spec.ts \
 	src/components/admin/account/__tests__/OpenAISessionExportDialog.spec.ts \
 	src/components/admin/account/__tests__/AccountActionMenu.spark_shadow.spec.ts \
 	src/api/__tests__/groupCacheTest.spec.ts \
@@ -93,6 +89,9 @@ FRONTEND_CRITICAL_VITEST := \
 	src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts \
 	src/features/channel-monitor-v2/__tests__/monitorZoom.spec.ts \
 	src/components/admin/channel/__tests__/PricingEntryCard.modelDefaultPrice.spec.ts
+
+# Personal tests are appended away from the upstream insertion point.
+-include Makefile.custom
 
 # 一键编译前后端
 build: build-backend build-frontend

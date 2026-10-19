@@ -4,8 +4,8 @@ on:
   push:
     branches: [custom]
   schedule:
-    # Every 20 minutes, away from the top-of-hour traffic peak.
-    - cron: '7,27,47 * * * *'
+    # Every 30 minutes, away from the top-of-hour traffic peak.
+    - cron: '7,37 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -14,7 +14,6 @@ concurrency:
 
 permissions:
   contents: write
-  pull-requests: write
   packages: write
   actions: write
 
@@ -25,6 +24,7 @@ jobs:
     outputs:
       changed: ${{ steps.merge.outputs.changed }}
       sha: ${{ steps.merge.outputs.sha }}
+      runtime_changed: ${{ steps.merge.outputs.runtime_changed }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -44,6 +44,13 @@ jobs:
             echo 'No upstream changes.' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          merge_base=$(git merge-base HEAD upstream/production)
+          upstream_files=$(git diff --name-only "$merge_base" upstream/production)
+          if grep -Eq '^(tools/(openai_|test_openai_|reauth-runtime/)|backend/internal/reauthruntime/|\.github/workflows/reauth-runtime\.yml$)' <<< "$upstream_files"; then
+            echo 'runtime_changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'runtime_changed=false' >> "$GITHUB_OUTPUT"
+          fi
           previous=$(git ls-remote origin refs/heads/sync/upstream | cut -f1)
           git switch -c sync/upstream
           if ! git -c merge.keep-custom-readme.driver=true merge --no-edit upstream/production; then
@@ -60,8 +67,31 @@ jobs:
     uses: ./.github/workflows/custom-build.yml
     with:
       ref: ${{ needs.prepare.outputs.sha }}
+  ci:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    uses: ./.github/workflows/backend-ci.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+  security:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    uses: ./.github/workflows/security-scan.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+  runtime:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true' && needs.prepare.outputs.runtime_changed == 'true'
+    uses: ./.github/workflows/reauth-runtime.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
   merge-and-release:
-    needs: [prepare, validate]
+    needs: [prepare, validate, ci, security, runtime]
+    if: >-
+      ${{ !cancelled() && needs.prepare.outputs.changed == 'true' &&
+          needs.validate.result == 'success' && needs.ci.result == 'success' &&
+          needs.security.result == 'success' &&
+          (needs.runtime.result == 'success' || needs.runtime.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -72,25 +102,15 @@ jobs:
         with:
           ref: custom
           fetch-depth: 0
-      - name: Create or reuse the update pull request
+      - name: Merge the validated commit and publish
         env:
           VALIDATED_SHA: ${{ needs.prepare.outputs.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          existing=$(gh pr list --base custom --head sync/upstream --state open --json url --jq '.[0].url // empty')
-          if [ -n "$existing" ]; then
-            echo "$existing" >> "$GITHUB_STEP_SUMMARY"
-          else
-          cat > "$RUNNER_TEMP/upstream-pr.md" <<'BODY'
-          Merge ranxi2001/sub2api's production branch into custom, retaining local features.
-
-          Validation: Custom upstream sync built this exact commit (frontend typecheck/build, Go compilation, focused custom-feature regression tests, persistent Docker update tests).
-
-          Successful validation fast-forwards custom to this commit and dispatches image and built-in updater publication. Conflicts, failed checks, or concurrent custom changes stop merging. Deployment remains manual.
-          BODY
-          gh pr create --base custom --head sync/upstream --title 'chore: sync upstream production' --body-file "$RUNNER_TEMP/upstream-pr.md" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          # Reusable workflows checked this exact candidate before merging.
+          # Creating an immediately merged bot PR leaves approval-required
+          # pull_request runs to expire without executing any checks.
           # No force: a concurrent custom commit rejects the push.
           git fetch origin sync/upstream
           git cat-file -e "$VALIDATED_SHA^{commit}"
