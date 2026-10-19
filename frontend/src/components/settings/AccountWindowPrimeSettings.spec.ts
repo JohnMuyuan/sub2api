@@ -86,3 +86,25 @@ describe('AccountWindowPrimeSettings', () => {
     expect(wrapper.find(sel('window-prime-save')).exists()).toBe(true)
   })
 })
+
+describe('AccountWindowPrimeSettings model picker', () => {
+  it('offers the built-in models and saves the chosen one', async () => {
+    vi.mocked(accountWindowPrimeAPI.get).mockResolvedValue({
+      ...structuredClone(stored),
+      model_options: { openai: ['gpt-5.4-mini', 'gpt-5.4'], anthropic: ['claude-haiku-4-5-20251001'] }
+    })
+    const wrapper = mount(AccountWindowPrimeSettings)
+    await flushPromises()
+    const options = wrapper.get(sel('window-prime-openai-model')).findAll('option').map((option) => option.element.value)
+    expect(options).toEqual(['', 'gpt-5.4-mini', 'gpt-5.4', '__custom__'])
+    // A stored model outside the list opens the custom box.
+    expect((wrapper.get(sel('window-prime-anthropic-model-custom')).element as HTMLInputElement).value).toBe('claude-x')
+
+    await wrapper.get(sel('window-prime-openai-model')).setValue('gpt-5.4')
+    await wrapper.get(sel('window-prime-save')).trigger('click')
+    await flushPromises()
+    const payload = vi.mocked(accountWindowPrimeAPI.save).mock.calls[0]?.[0]
+    expect(payload?.platforms.openai.model).toBe('gpt-5.4')
+    expect(payload).not.toHaveProperty('model_options')
+  })
+})

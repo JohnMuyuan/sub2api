@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { enableAutoUnmount, mount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import type { Account } from '@/types'
 
 enableAutoUnmount(afterEach)
 
-const { updateAccountMock, showErrorMock } = vi.hoisted(() => ({ updateAccountMock: vi.fn(), showErrorMock: vi.fn() }))
+const { updateAccountMock, showErrorMock, getAvailableModelsMock } = vi.hoisted(() => ({
+  updateAccountMock: vi.fn(),
+  showErrorMock: vi.fn(),
+  getAvailableModelsMock: vi.fn()
+}))
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({ showError: showErrorMock, showSuccess: vi.fn(), showInfo: vi.fn() })
@@ -28,7 +32,10 @@ vi.mock('@/api/admin', () => ({
     tlsFingerprintProfiles: { list: vi.fn().mockResolvedValue([]) }
   }
 }))
-vi.mock('@/api/admin/accounts', () => ({ getAntigravityDefaultModelMapping: vi.fn() }))
+vi.mock('@/api/admin/accounts', () => ({
+  getAntigravityDefaultModelMapping: vi.fn(),
+  getAvailableModels: getAvailableModelsMock
+}))
 vi.mock('vue-i18n', async () => ({
   ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'),
   useI18n: () => ({ t: (key: string) => key })
@@ -89,10 +96,14 @@ describe('EditAccountModal window priming', () => {
     updateAccountMock.mockReset()
     showErrorMock.mockReset()
     updateAccountMock.mockImplementation(async (_id, payload) => ({ ...buildAccount(), ...payload }))
+    getAvailableModelsMock.mockReset()
+    getAvailableModelsMock.mockResolvedValue([{ id: 'gpt-5.4-mini' }, { id: 'gpt-5.4-nano' }])
   })
 
   it('saves an account override with model and prompts', async () => {
     const wrapper = mountModal(buildAccount({ custom_setting: 'keep-me' }))
+    await flushPromises()
+    expect(getAvailableModelsMock).toHaveBeenCalledWith(71)
     await wrapper.get(sel('account-window-prime-mode-on')).setValue(true)
     await wrapper.get(sel('account-window-prime-model')).setValue('gpt-5.4-nano')
     await wrapper.get(sel('account-window-prime-prompts')).setValue('早\n\n  hello ')
@@ -136,5 +147,41 @@ describe('EditAccountModal window priming', () => {
     await submit(wrapper)
     expect(showErrorMock).toHaveBeenCalledWith('admin.settings.windowPrime.invalid')
     expect(updateAccountMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('EditAccountModal window priming model picker', () => {
+  beforeEach(() => {
+    updateAccountMock.mockReset()
+    updateAccountMock.mockImplementation(async (_id, payload) => ({ ...buildAccount(), ...payload }))
+    getAvailableModelsMock.mockReset()
+  })
+
+  it('accepts a custom model id', async () => {
+    getAvailableModelsMock.mockResolvedValue([{ id: 'gpt-5.4-mini' }])
+    const wrapper = mountModal()
+    await flushPromises()
+    await wrapper.get(sel('account-window-prime-mode-on')).setValue(true)
+    await wrapper.get(sel('account-window-prime-model')).setValue('__custom__')
+    await wrapper.get(sel('account-window-prime-model-custom')).setValue('my-model')
+    await submit(wrapper)
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledTimes(1))
+    expect(updateAccountMock.mock.calls[0]?.[1].extra.window_prime.model).toBe('my-model')
+  })
+
+  it('shows a saved model that is not in the list as custom', async () => {
+    getAvailableModelsMock.mockResolvedValue([{ id: 'gpt-5.4-mini' }])
+    const wrapper = mountModal(buildAccount({ window_prime: { mode: 'on', model: 'old-model', prompts: [] } }))
+    await flushPromises()
+    expect((wrapper.get(sel('account-window-prime-model')).element as HTMLSelectElement).value).toBe('__custom__')
+    expect((wrapper.get(sel('account-window-prime-model-custom')).element as HTMLInputElement).value).toBe('old-model')
+  })
+
+  it('still allows typing a model when the list cannot load', async () => {
+    getAvailableModelsMock.mockRejectedValue(new Error('upstream down'))
+    const wrapper = mountModal()
+    await flushPromises()
+    await wrapper.get(sel('account-window-prime-mode-on')).setValue(true)
+    expect(wrapper.text()).toContain('admin.settings.windowPrime.modelLoadFailed')
   })
 })

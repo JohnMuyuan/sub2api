@@ -1381,6 +1381,7 @@ export interface Account {
   // 随机停调阈值：仅在账号或平台启用随机范围时返回，每个窗口本轮抽到的停调百分比。
   scheduling_threshold_rounds?: Array<{
     window: string
+    mode?: 'fixed' | 'random'
     scope?: string
     threshold_percent: number
     used_percent: number

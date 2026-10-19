@@ -308,9 +308,9 @@ func TestRandomSchedulingThreshold_SettingServiceRoundTrip(t *testing.T) {
 	svc := NewSettingService(newMockSettingRepo(), &config.Config{})
 
 	require.Empty(t, svc.GetAccountSchedulingThresholdRanges(context.Background()))
-	saved, err := svc.SetAccountSchedulingThresholdRanges(context.Background(), map[string]AccountSchedulingThresholdRange{
+	saved, _, err := svc.SetAccountSchedulingThresholdRanges(context.Background(), map[string]AccountSchedulingThresholdRange{
 		PlatformAnthropic: {Enabled: true, Min: 88, Max: 96, FullMonthlyLimit: 1},
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.Equal(t, saved, svc.GetAccountSchedulingThresholdRanges(context.Background()))
 	require.Equal(t, 88, svc.GetAccountSchedulingThresholdPolicy(context.Background()).Ranges[PlatformAnthropic].Min)

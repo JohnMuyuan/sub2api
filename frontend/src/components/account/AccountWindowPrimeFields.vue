@@ -16,13 +16,13 @@
     </div>
     <template v-if="modelValue.mode !== 'off'">
       <label class="input-label mt-3">{{ t('admin.settings.windowPrime.model') }}</label>
-      <input
-        :value="modelValue.model"
-        type="text"
-        class="input"
-        :placeholder="t('admin.settings.windowPrime.account.modelPlaceholder')"
-        data-testid="account-window-prime-model"
-        @input="emitConfig({ model: ($event.target as HTMLInputElement).value })"
+      <WindowPrimeModelSelect
+        :model-value="modelValue.model"
+        :options="upstreamModels"
+        :empty-label="t('admin.settings.windowPrime.modelFollow')"
+        :load-failed="modelsLoadFailed"
+        test-id="account-window-prime-model"
+        @update:model-value="emitConfig({ model: $event })"
       />
       <label class="input-label mt-3">{{ t('admin.settings.windowPrime.prompts') }}</label>
       <textarea
@@ -42,8 +42,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import WindowPrimeModelSelect from '@/components/settings/WindowPrimeModelSelect.vue'
+import { getAvailableModels } from '@/api/admin/accounts'
 import {
   isValidWindowPrimePrompts,
   splitWindowPrimePrompts,
@@ -51,7 +53,11 @@ import {
   type WindowPrimeMode
 } from '@/utils/accountWindowPrime'
 
-const props = defineProps<{ modelValue: AccountWindowPrimeConfig }>()
+const props = defineProps<{
+  modelValue: AccountWindowPrimeConfig
+  // Loads this account's upstream models for the picker.
+  accountId?: number
+}>()
 const emit = defineEmits<{ (e: 'update:modelValue', value: AccountWindowPrimeConfig): void }>()
 
 const { t } = useI18n()
@@ -71,6 +77,23 @@ watch(
     }
   }
 )
+
+const upstreamModels = ref<string[]>([])
+const modelsLoadFailed = ref(false)
+
+async function loadUpstreamModels(accountId: number | undefined) {
+  upstreamModels.value = []
+  modelsLoadFailed.value = false
+  if (!accountId) return
+  try {
+    upstreamModels.value = (await getAvailableModels(accountId)).map((model) => model.id)
+  } catch {
+    modelsLoadFailed.value = true
+  }
+}
+
+onMounted(() => loadUpstreamModels(props.accountId))
+watch(() => props.accountId, loadUpstreamModels)
 
 function emitConfig(patch: Partial<AccountWindowPrimeConfig>) {
   emit('update:modelValue', { ...props.modelValue, ...patch })

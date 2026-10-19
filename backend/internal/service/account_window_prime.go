@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
 // Window priming: OpenAI Codex and Anthropic usage windows (5h, weekly) only
@@ -80,6 +83,15 @@ func DefaultAccountWindowPrimeSettings() AccountWindowPrimeSettings {
 		ActiveHoursEnd:   accountWindowPrimeDefaultHoursEnd,
 		Prompts:          []string{accountWindowPrimeDefaultPrompt},
 		DefaultModels:    accountWindowPrimeDefaultModels(),
+	}
+}
+
+// AccountWindowPrimeModelOptions lists the built-in models per platform for the
+// system settings picker; accounts list their own upstream models instead.
+func AccountWindowPrimeModelOptions() map[string][]string {
+	return map[string][]string{
+		PlatformOpenAI:    openai.DefaultModelIDs(),
+		PlatformAnthropic: claude.DefaultModelIDs(),
 	}
 }
 

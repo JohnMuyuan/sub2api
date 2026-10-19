@@ -48,11 +48,15 @@ function label(round: Round) {
 }
 
 function tooltip(round: Round) {
+  const resetsAt = formatDateTimeToMinute(round.resets_at)
+  if (round.mode === 'fixed') {
+    return t('admin.settings.schedulingThresholdRange.rounds.fixedTooltip', { resetsAt })
+  }
   const lines = [
     t('admin.settings.schedulingThresholdRange.rounds.tooltip', {
       min: round.range_min,
       max: round.range_max,
-      resetsAt: formatDateTimeToMinute(round.resets_at)
+      resetsAt
     })
   ]
   if (round.full_monthly_limit > 0) {

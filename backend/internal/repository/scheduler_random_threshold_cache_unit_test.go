@@ -12,11 +12,13 @@ import (
 func TestRandomSchedulingThreshold_SchedulerSnapshotKeepsRangeAndFullDraws(t *testing.T) {
 	r := map[string]any{"min": 90, "max": 100, "full_monthly_limit": 2}
 	credentials := filterSchedulerCredentials(map[string]any{
-		"account_scheduling_threshold":                       90,
-		service.AccountSchedulingThresholdRangeCredentialKey: r,
+		"account_scheduling_threshold":                         90,
+		service.AccountSchedulingThresholdRangeCredentialKey:   r,
+		service.AccountSchedulingThresholdWindowsCredentialKey: map[string]any{"5h": map[string]any{"mode": "fixed", "threshold": 80}},
 		"access_token": "secret",
 	})
 	require.Equal(t, r, credentials[service.AccountSchedulingThresholdRangeCredentialKey])
+	require.Contains(t, credentials, service.AccountSchedulingThresholdWindowsCredentialKey)
 	require.NotContains(t, credentials, "access_token")
 
 	extra := map[string]any{"unrelated": true}
