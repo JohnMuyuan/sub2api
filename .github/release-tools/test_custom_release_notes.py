@@ -54,6 +54,23 @@ class CustomReleaseNotesTest(unittest.TestCase):
         self.assertLess(body.index("OLD NOTES"), body.index("NEW NOTES"))
         self.assertNotIn("FUTURE NOTES", body)
 
+    def test_names_previous_baseline_and_merged_range(self):
+        notes.run("git", "tag", "v2026.10.1", self.old)
+        body = notes.render("2026.10.2", self.source, self.releases, "refs/tags/v2026.10.1")
+        self.assertIn("上游基线：[v2](https://github.com/ranxi2001/sub2api/releases/tag/v2)（上一个自用版本 v2026.10.1 的基线：v1）", body)
+        self.assertIn("**v1 → v2**，共 1 个上游正式版本：v2", body)
+        self.assertIn("## 上游 v2（当前基线）", body)
+
+    def test_multi_release_jump_labels_intermediate_and_current(self):
+        body = notes.render("2026.10.2", self.source, self.releases, self.base)
+        self.assertIn("共 2 个上游正式版本：v1、v2", body)
+        self.assertLess(body.index("## 上游 v1（中间版本）"), body.index("## 上游 v2（当前基线）"))
+
+    def test_unchanged_and_first_release_baseline_notes(self):
+        notes.run("git", "tag", "v2026.10.1", self.source)
+        self.assertIn("（与上一个自用版本 v2026.10.1 相同）", notes.render("2026.10.2", self.source, self.releases, "refs/tags/v2026.10.1"))
+        self.assertIn("（首个自用版本）", notes.render("2026.10.2", self.source, self.releases, None))
+
     def test_personal_only_release_still_shows_current_upstream_notes(self):
         body = notes.render("2026.10.2", self.source, self.releases, self.source)
         self.assertIn("本次没有新增上游正式版本", body)

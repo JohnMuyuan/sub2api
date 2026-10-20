@@ -57,17 +57,32 @@ def render(version, source, upstream_releases, previous):
         lines += [f"当前构建未匹配到已合入的上游正式发布，参见[上游更新日志](https://github.com/{UPSTREAM}/releases)。"]
         return "\n".join(lines) + "\n"
     latest = included[0]
-    lines += [f"上游基线：[{latest['tag_name']}]({latest['html_url']})", ""]
+    previous_tag = previous.removeprefix("refs/tags/") if previous else None
+    previous_base = next((release for release in included if previous and ancestor(UPSTREAM_REFS + release["tag_name"], previous)), None)
+    # Name the previous baseline so a multi-release jump is not read as stopping at
+    # the first (oldest) section below.
+    if not previous_tag:
+        baseline_note = "（首个自用版本）"
+    elif previous_base is None:
+        baseline_note = f"（上一个自用版本 {previous_tag} 未匹配到上游正式发布）"
+    elif previous_base is latest:
+        baseline_note = f"（与上一个自用版本 {previous_tag} 相同）"
+    else:
+        baseline_note = f"（上一个自用版本 {previous_tag} 的基线：{previous_base['tag_name']}）"
+    lines += [f"上游基线：[{latest['tag_name']}]({latest['html_url']}){baseline_note}", ""]
     changed = [release for release in included if previous and not ancestor(UPSTREAM_REFS + release["tag_name"], previous)]
     if changed:
-        lines += ["## 本次合入的上游更新", ""]
         selected = list(reversed(changed))
+        start = previous_base["tag_name"] if previous_base else "上次自用版本"
+        names = "、".join(release["tag_name"] for release in selected)
+        lines += ["## 本次合入的上游更新", "", f"**{start} → {latest['tag_name']}**，共 {len(selected)} 个上游正式版本：{names}（按发布时间从旧到新列出，最后一个为当前基线）。", ""]
     else:
         if previous:
             lines += ["本次没有新增上游正式版本，以下为当前基线版本的更新日志。", ""]
         selected = [latest]
     for release in selected:
-        lines += [f"## 上游 {release['tag_name']}", "", f"[查看上游原始说明]({release['html_url']})", "", changelog(release["body"]) or "上游未填写该版本的更新说明。", ""]
+        label = "（当前基线）" if release is latest else "（中间版本）"
+        lines += [f"## 上游 {release['tag_name']}{label}", "", f"[查看上游原始说明]({release['html_url']})", "", changelog(release["body"]) or "上游未填写该版本的更新说明。", ""]
     return "\n".join(lines)
 
 
