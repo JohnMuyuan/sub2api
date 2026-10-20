@@ -35,6 +35,7 @@ func TestAccountViewerJWTEnforcesReadOnlyCapabilitiesAndFreshGrants(t *testing.T
 		{"GET", "/api/v1/admin/accounts", "/api/v1/admin/accounts"},
 		{"GET", "/api/v1/admin/accounts/:id/usage", "/api/v1/admin/accounts/1/usage"},
 		{"GET", "/api/v1/admin/accounts/:id/stats", "/api/v1/admin/accounts/1/stats"},
+		{"GET", "/api/v1/admin/accounts/:id/claude/reset-credits", "/api/v1/admin/accounts/1/claude/reset-credits"},
 		{"POST", "/api/v1/admin/accounts/:id/test", "/api/v1/admin/accounts/1/test"},
 		{"GET", "/api/v1/admin/groups/all", "/api/v1/admin/groups/all"},
 	}
@@ -50,6 +51,7 @@ func TestAccountViewerJWTEnforcesReadOnlyCapabilitiesAndFreshGrants(t *testing.T
 		{"POST", "/api/v1/admin/accounts/:id/refresh", "/api/v1/admin/accounts/1/refresh"},
 		{"POST", "/api/v1/admin/accounts/:id/schedulable", "/api/v1/admin/accounts/1/schedulable"},
 		{"POST", "/api/v1/admin/accounts/:id/reset-quota", "/api/v1/admin/accounts/1/reset-quota"},
+		{"POST", "/api/v1/admin/accounts/:id/claude/reset-credits/redeem", "/api/v1/admin/accounts/1/claude/reset-credits/redeem"},
 		{"DELETE", "/api/v1/admin/accounts/:id/temp-unschedulable", "/api/v1/admin/accounts/1/temp-unschedulable"},
 		{"POST", "/api/v1/admin/accounts/bulk-update", "/api/v1/admin/accounts/bulk-update"},
 		{"POST", "/api/v1/admin/accounts/batch-delete", "/api/v1/admin/accounts/batch-delete"},

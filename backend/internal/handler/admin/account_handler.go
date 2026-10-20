@@ -72,6 +72,7 @@ type AccountHandler struct {
 	openAIGatewayService    *service.OpenAIGatewayService
 	cfg                     *config.Config
 	opencodeGoUsage         *service.OpenCodeGoUsageService
+	claudeResetCredits      claudeResetReader
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
