@@ -1,3 +1,4 @@
+import siwc from './siwc'
 import priorityScheduling from './priorityScheduling'
 import qualityOps from './qualityOps'
 import controlledExperiments from './controlledExperiments'
@@ -24,6 +25,7 @@ import accountViewer from './accountViewer'
 
 export default {
   accountViewer,
+  siwc,
   autoConfig,
   priorityScheduling,
   qualityOps,
