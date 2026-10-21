@@ -85,7 +85,7 @@ git log -5 origin/custom --oneline
 
 ## 5. 开发和验证
 
-后端模块根是 `backend/`，Go 版本以 `backend/go.mod` 为准（快照为 1.27.2）。前端 Vue 3 / TypeScript，使用 pnpm 9；CI 使用 Node 20、Python 3.12。不要在仓库根运行 Go 模块命令。
+后端模块根是 `backend/`，Go 版本以 `backend/go.mod` 为准（快照为 1.27.3）。前端 Vue 3 / TypeScript，使用 pnpm 9；CI 使用 Node 20、Python 3.12。不要在仓库根运行 Go 模块命令。
 
 发布/同步修改优先跑：
 
