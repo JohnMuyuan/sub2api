@@ -138,6 +138,7 @@ func TestParseOpsOpenAITokenStatsFilter_InvalidParams(t *testing.T) {
 		"/?page=0",
 		"/?page_size=0",
 		"/?page_size=101",
+		"/?page=9223372036854775807",
 	}
 
 	gin.SetMode(gin.TestMode)
