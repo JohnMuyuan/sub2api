@@ -1,3 +1,6 @@
+import ipAudit from './ipAudit'
+import connections from './connections'
+import securityRecords from './securityRecords'
 import siwc from './siwc'
 import priorityScheduling from './priorityScheduling'
 import qualityOps from './qualityOps'
@@ -25,6 +28,9 @@ import accountViewer from './accountViewer'
 
 export default {
   accountViewer,
+  ipAudit,
+  connections,
+  securityRecords,
   siwc,
   autoConfig,
   priorityScheduling,
