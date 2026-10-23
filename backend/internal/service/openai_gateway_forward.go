@@ -1967,10 +1967,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	if err := s.applyOpenAICodexTicket(ctx, account, extractOpenAICodexTicketModel(body), req.Header); err != nil {
 		return nil, err
 	}
+	upstreamSessionID := ""
 	if account.UsesOpenAICodexProtocol() {
 		compatMessagesBridge := isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
 		// 清除客户端透传的 session 头，后续用隔离后的值重新设置，防止跨用户会话碰撞。
-		clientConversationID := strings.TrimSpace(req.Header.Get("conversation_id"))
 		req.Header.Del("conversation_id")
 		req.Header.Del("session_id")
 
@@ -1988,21 +1988,20 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			if req.Header.Get("version") == "" {
 				req.Header.Set("version", CodexCanonicalClientVersion())
 			}
-			if harvestSession == "" {
-				compactSession := resolveOpenAICompactSessionID(c)
-				req.Header.Set("session_id", isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), compactSession))
-			}
 		} else {
 			req.Header.Set("accept", "text/event-stream")
 		}
 		if harvestSession != "" {
+			// Harvest 绑定的票据只认铸造时的 session_id，不夹带客户端的会话头。
+			deleteCodexClientSessionHeaders(req.Header)
 			req.Header.Set("session_id", harvestSession)
-		} else if promptCacheKey != "" {
-			isolated := isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), promptCacheKey)
-			req.Header.Set("session_id", isolated)
-			if !compatMessagesBridge || clientConversationID != "" {
-				req.Header.Set("conversation_id", isolated)
+		} else {
+			// 官方 Codex 以 prompt_cache_key 作为 session-id；compact 无该字段时回退到 compact 会话。
+			sessionKey := promptCacheKey
+			if sessionKey == "" && isOpenAIResponsesCompactPath(c) {
+				sessionKey = resolveOpenAICompactSessionID(c)
 			}
+			upstreamSessionID = codexUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), sessionKey)
 		}
 	} else if isOpenAIResponsesCompactPath(c) {
 		// compact 上游是 unary JSON 协议：API-key 账号也显式声明 Accept，
@@ -2027,6 +2026,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	if s.harvestPinnedSessionForModel(ctx, account, extractOpenAICodexTicketModel(body)) == "" {
 		applyCodexAccountIdentityHeaders(req.Header, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		applyStagedCodexFingerprintHeaders(c, account, req.Header)
+		if account.UsesOpenAICodexProtocol() {
+			applyCodexSessionHeaders(req.Header, upstreamSessionID)
+		}
 	}
 
 	// 终态收口：强制统一 OAuth 出站身份（User-Agent / originator / version 同源自洽）。

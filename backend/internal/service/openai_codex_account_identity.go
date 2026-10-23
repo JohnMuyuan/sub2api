@@ -106,21 +106,115 @@ func scopeCodexAccountIdentityValue(account *Account, apiKeyID int64, kind, raw 
 	))
 }
 
+// Official Codex reuses one thread UUID across identity carriers: a root turn
+// sends session-id == thread-id == x-client-request-id == prompt_cache_key,
+// child turns name their parent through x-codex-parent-thread-id, and the
+// window id is "{thread_id}:{n}" (codex-rs codex-api/src/endpoint/responses.rs,
+// core/src/session/mod.rs). Thread-valued fields therefore share one scoping
+// kind, so values that are equal on the client stay equal upstream.
+const (
+	codexAccountIdentityKindThread = "session"
+	codexAccountIdentityKindWindow = "window"
+)
+
 var codexAccountIdentityFields = []struct {
 	name string
 	kind string
 }{
 	{name: "installation_id", kind: "installation"},
 	{name: "x-codex-installation-id", kind: "installation"},
-	{name: "session_id", kind: "session"},
-	{name: "session-id", kind: "session"},
-	{name: "thread_id", kind: "thread"},
-	{name: "thread-id", kind: "thread"},
+	{name: "session_id", kind: codexAccountIdentityKindThread},
+	{name: "session-id", kind: codexAccountIdentityKindThread},
+	{name: "thread_id", kind: codexAccountIdentityKindThread},
+	{name: "thread-id", kind: codexAccountIdentityKindThread},
+	{name: "x-client-request-id", kind: codexAccountIdentityKindThread},
+	{name: "parent_thread_id", kind: codexAccountIdentityKindThread},
+	{name: codexParentThreadIDHeader, kind: codexAccountIdentityKindThread},
+	{name: "forked_from_thread_id", kind: codexAccountIdentityKindThread},
 	{name: "turn_id", kind: "turn"},
 	{name: "turn-id", kind: "turn"},
-	{name: "window_id", kind: "window"},
-	{name: "x-codex-window-id", kind: "window"},
-	{name: "x-client-request-id", kind: "request"},
+	{name: "parent_turn_id", kind: "turn"},
+	{name: "root_turn_id", kind: "turn"},
+	{name: "window_id", kind: codexAccountIdentityKindWindow},
+	{name: "x-codex-window-id", kind: codexAccountIdentityKindWindow},
+}
+
+// scopeCodexAccountIdentityField scopes one identity value. Window ids keep the
+// official "{thread_id}:{n}" shape with the thread part scoped like thread-id;
+// any other window value is scoped as an opaque string.
+func scopeCodexAccountIdentityField(account *Account, apiKeyID int64, kind, raw string) string {
+	if kind == codexAccountIdentityKindWindow {
+		raw = strings.TrimSpace(raw)
+		if idx := strings.LastIndexByte(raw, ':'); idx > 0 && isASCIIDigits(raw[idx+1:]) {
+			return scopeCodexAccountIdentityValue(account, apiKeyID, codexAccountIdentityKindThread, raw[:idx]) + raw[idx:]
+		}
+	}
+	return scopeCodexAccountIdentityValue(account, apiKeyID, kind, raw)
+}
+
+func isASCIIDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// codexUpstreamSessionID derives the outbound session-id from a client session
+// or prompt cache key. With a credential namespace it matches the scoped body
+// prompt_cache_key, as official Codex sends the same value in both places;
+// otherwise it keeps the per-API-key isolation. Both forms are UUID-shaped like
+// the thread ids the official client sends.
+func codexUpstreamSessionID(apiKeyID int64, account *Account, raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if codexAccountIdentityNamespace(account) != "" {
+		return scopeCodexAccountIdentityValue(account, apiKeyID, codexAccountIdentityKindThread, raw)
+	}
+	return deriveStableUUIDv4("sub2api:codex-session-id:" + isolateOpenAISessionID(apiKeyID, raw))
+}
+
+// codexClientSessionHeaders are the client-supplied session headers that
+// applyCodexSessionHeaders projects; harvest-pinned requests drop them.
+var codexClientSessionHeaders = []string{"session-id", "thread-id", "x-client-request-id", openAISubagentHeader, codexParentThreadIDHeader}
+
+func deleteCodexClientSessionHeaders(h http.Header) {
+	for _, name := range codexClientSessionHeaders {
+		h.Del(name)
+	}
+}
+
+// applyCodexSessionHeaders writes the session header set of current official
+// Codex (session-id, thread-id, x-client-request-id). The legacy underscore
+// session_id / conversation_id headers are no longer sent by the official client
+// and are removed. Values already present (client headers after account scoping
+// or fingerprint convergence) win; sessionID only fills a missing session-id,
+// and a root turn uses its session as thread and request id.
+func applyCodexSessionHeaders(h http.Header, sessionID string) {
+	if h == nil {
+		return
+	}
+	h.Del("session_id")
+	h.Del("conversation_id")
+	if strings.TrimSpace(h.Get("session-id")) == "" && strings.TrimSpace(sessionID) != "" {
+		h.Set("session-id", strings.TrimSpace(sessionID))
+	}
+	if strings.TrimSpace(h.Get("thread-id")) == "" {
+		if session := strings.TrimSpace(h.Get("session-id")); session != "" {
+			h.Set("thread-id", session)
+		}
+	}
+	if strings.TrimSpace(h.Get("x-client-request-id")) == "" {
+		if thread := strings.TrimSpace(h.Get("thread-id")); thread != "" {
+			h.Set("x-client-request-id", thread)
+		}
+	}
 }
 
 func applyCodexAccountIdentityFields(values map[string]any, account *Account, apiKeyID int64) bool {
@@ -133,7 +227,7 @@ func applyCodexAccountIdentityFields(values map[string]any, account *Account, ap
 		if !ok || strings.TrimSpace(raw) == "" {
 			continue
 		}
-		next := scopeCodexAccountIdentityValue(account, apiKeyID, field.kind, raw)
+		next := scopeCodexAccountIdentityField(account, apiKeyID, field.kind, raw)
 		if next != raw {
 			values[field.name] = next
 			changed = true
@@ -181,7 +275,7 @@ func applyCodexAccountIdentityClientMetadataMap(requestBody map[string]any, acco
 	if raw, ok := requestBody["prompt_cache_key"].(string); ok && strings.TrimSpace(raw) != "" {
 		kind := "prompt-cache"
 		if strings.TrimSpace(originalBodySessionID) != "" && raw == originalBodySessionID {
-			kind = "session"
+			kind = codexAccountIdentityKindThread
 		}
 		next := scopeCodexAccountIdentityValue(account, apiKeyID, kind, raw)
 		if next != raw {
@@ -234,7 +328,7 @@ func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, a
 		raw := promptCacheKey.String()
 		kind := "prompt-cache"
 		if strings.TrimSpace(originalBodySessionID) != "" && raw == originalBodySessionID {
-			kind = "session"
+			kind = codexAccountIdentityKindThread
 		}
 		scoped := scopeCodexAccountIdentityValue(account, apiKeyID, kind, raw)
 		if scoped != raw {
@@ -261,7 +355,7 @@ func applyCodexAccountIdentityHeaders(headers http.Header, account *Account, api
 		}
 		raw := strings.TrimSpace(headers.Get(field.name))
 		if raw != "" {
-			headers.Set(field.name, scopeCodexAccountIdentityValue(account, apiKeyID, field.kind, raw))
+			headers.Set(field.name, scopeCodexAccountIdentityField(account, apiKeyID, field.kind, raw))
 		}
 	}
 	if raw := strings.TrimSpace(headers.Get(openAIWSTurnMetadataHeader)); raw != "" {

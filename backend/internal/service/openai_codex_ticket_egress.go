@@ -29,6 +29,8 @@ var boundCodexTicketForeignIdentityHeaders = []string{
 	"x-codex-window-id",
 	"x-client-request-id",
 	"x-codex-turn-metadata",
+	openAISubagentHeader,
+	codexParentThreadIDHeader,
 }
 
 // Harvest probes never send these. Conversation / WS inject them after the

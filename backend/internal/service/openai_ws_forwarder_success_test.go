@@ -470,9 +470,9 @@ func TestOpenAIGatewayService_BuildOpenAIWSHeadersDeviceModePreservesNamespacedC
 	require.Equal(t, ids.installationID, headers.Get("x-codex-installation-id"))
 	require.NotEqual(t, "client-installation", headers.Get("x-codex-installation-id"))
 	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "window", "client-window"), headers.Get("x-codex-window-id"))
-	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "session", "client-session"), headers.Get("session-id"))
-	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "thread", "client-thread"), headers.Get("thread-id"))
-	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "request", "client-request"), headers.Get("x-client-request-id"))
+	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, codexAccountIdentityKindThread, "client-session"), headers.Get("session-id"))
+	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, codexAccountIdentityKindThread, "client-thread"), headers.Get("thread-id"))
+	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, codexAccountIdentityKindThread, "client-request"), headers.Get("x-client-request-id"))
 }
 
 func TestLogOpenAIWSBindResponseAccountWarn(t *testing.T) {
@@ -806,10 +806,11 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 	require.Equal(t, "native-wsv2", gjson.Get(requestJSON, "input.0.namespace").String(), "OAuth WSv2 应保留原生 namespace")
 	require.Equal(t, openAIWSBetaV2Value, captureDialer.lastHeaders.Get("OpenAI-Beta"))
 	require.Equal(t, "remote_compaction_v2", captureDialer.lastHeaders.Get("x-codex-beta-features"))
-	// OAuth 账号的 session_id/conversation_id 应同时按 API key 和上游账号隔离，
+	// OAuth 账号只发官方 session-id，按 API key 和上游账号隔离；
 	// 测试中未设置 api_key 到 context，apiKeyID=0。
-	require.Equal(t, isolateOpenAIUpstreamSessionID(0, account, "sess-oauth-1"), captureDialer.lastHeaders.Get("session_id"))
-	require.Equal(t, isolateOpenAIUpstreamSessionID(0, account, "conv-oauth-1"), captureDialer.lastHeaders.Get("conversation_id"))
+	require.Equal(t, codexUpstreamSessionID(0, account, "sess-oauth-1"), captureDialer.lastHeaders.Get("session-id"))
+	require.Empty(t, captureDialer.lastHeaders.Get("session_id"))
+	require.Empty(t, captureDialer.lastHeaders.Get("conversation_id"))
 }
 
 func TestOpenAIGatewayService_Forward_WSv2_OAuthSanitizesInvalidNativeToolItemID(t *testing.T) {
@@ -1100,8 +1101,8 @@ func TestOpenAIGatewayService_Forward_WSv2_HeaderSessionFallbackFromPromptCacheK
 	require.NotNil(t, result)
 	require.Equal(t, "resp_prompt_cache_key", result.RequestID)
 
-	// OAuth 账号的 session_id 应同时按 API key 和上游账号隔离（apiKeyID=0）。
-	require.Equal(t, isolateOpenAIUpstreamSessionID(0, account, "pcache_123"), captureDialer.lastHeaders.Get("session_id"))
+	// OAuth 账号的 session-id 应同时按 API key 和上游账号隔离（apiKeyID=0）。
+	require.Equal(t, codexUpstreamSessionID(0, account, "pcache_123"), captureDialer.lastHeaders.Get("session-id"))
 	require.Empty(t, captureDialer.lastHeaders.Get("conversation_id"))
 	require.NotNil(t, captureConn.lastWrite)
 	require.True(t, gjson.Get(requestToJSONString(captureConn.lastWrite), "stream").Exists())
@@ -1172,7 +1173,7 @@ func TestOpenAIGatewayService_Forward_WSv2_CodexFingerprintHandshakeBodyParityAn
 
 	require.Equal(t, wantInstall, captureDialer.lastHeaders.Get("x-codex-installation-id"))
 	require.Equal(t, wantSession, captureDialer.lastHeaders.Get("session-id"))
-	require.Equal(t, wantSession, captureDialer.lastHeaders.Get("session_id"))
+	require.Empty(t, captureDialer.lastHeaders.Get("session_id"))
 	require.Equal(t, wantThread, captureDialer.lastHeaders.Get("thread-id"))
 	require.Equal(t, wantThread, captureDialer.lastHeaders.Get("x-client-request-id"))
 	require.Equal(t, wantThread+":0", captureDialer.lastHeaders.Get("x-codex-window-id"))

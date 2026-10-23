@@ -114,7 +114,9 @@ func TestCodexAccountIdentitySourceResolvesShadowAndOverwritesFailoverContext(t 
 		"token", true, "client-session", true,
 	)
 	require.NoError(t, err)
-	require.Equal(t, isolateOpenAIUpstreamSessionID(0, parent, "client-session"), req.Header.Get("session_id"))
+	require.Equal(t, codexUpstreamSessionID(0, parent, "client-session"), req.Header.Get("session-id"))
+	require.Empty(t, req.Header.Get("session_id"))
+	require.Empty(t, req.Header.Get("conversation_id"))
 
 	next := &Account{ID: 19, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{
 		"chatgpt_account_id": "other-account",
@@ -153,7 +155,7 @@ func TestBuildOpenAIWSHeadersNamespacesCodexIdentityByOAuthAccount(t *testing.T)
 	first := build(account11)
 	firstAgain := build(account11)
 	second := build(account19)
-	for _, header := range []string{"session_id", "x-codex-installation-id", "thread-id", "x-codex-window-id", "x-client-request-id"} {
+	for _, header := range []string{"session-id", "x-codex-installation-id", "thread-id", "x-codex-window-id", "x-client-request-id"} {
 		require.NotEmpty(t, first.Get(header), header)
 		require.Equal(t, first.Get(header), firstAgain.Get(header), header)
 		require.NotEqual(t, first.Get(header), second.Get(header), header)
@@ -165,7 +167,9 @@ func TestBuildOpenAIWSHeadersNamespacesCodexIdentityByOAuthAccount(t *testing.T)
 		"token", true, "client-session", true,
 	)
 	require.NoError(t, err)
-	require.Equal(t, httpRequest.Header.Get("session_id"), first.Get("session_id"), "HTTP and WS must derive the same identity from the raw client key")
+	require.Equal(t, httpRequest.Header.Get("session-id"), first.Get("session-id"), "HTTP and WS must derive the same identity from the raw client key")
+	require.Empty(t, first.Get("session_id"))
+	require.Empty(t, first.Get("conversation_id"))
 }
 
 func TestBuildUpstreamRequestNamespacesCodexIdentityByOAuthAccount(t *testing.T) {
@@ -227,4 +231,43 @@ func TestBuildUpstreamRequestNamespacesCodexIdentityByOAuthAccount(t *testing.T)
 		require.NotEqual(t, first.Get(header), second.Get(header), "account failover must rotate upstream identity: %s", header)
 	}
 	require.GreaterOrEqual(t, checked, 5, "test must exercise the real outbound identity surface")
+}
+
+// A root turn of official Codex 0.164 sends one thread UUID as session-id,
+// thread-id, x-client-request-id, prompt_cache_key and the window-id prefix,
+// with no legacy session_id / conversation_id / OpenAI-Beta headers. Account
+// scoping must keep those equalities and the "{thread_id}:{n}" window shape.
+func TestBuildUpstreamRequestKeepsOfficialCodexSessionHeaderShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set("api_key", &APIKey{ID: 5})
+	const thread = "0199f3a4-7b2c-7d10-9a55-3c1e2f4a6b8d"
+	c.Request.Header.Set("session-id", thread)
+	c.Request.Header.Set("thread-id", thread)
+	c.Request.Header.Set("x-client-request-id", thread)
+	c.Request.Header.Set("x-codex-window-id", thread+":2")
+	c.Request.Header.Set("x-openai-subagent", "review")
+	c.Request.Header.Set("x-codex-parent-thread-id", "0199f3a4-0000-7000-8000-000000000001")
+
+	account := &Account{ID: 31, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{"chatgpt_account_id": "acct-31"}}
+	req, err := (&OpenAIGatewayService{}).buildUpstreamRequest(
+		context.Background(), c, account,
+		[]byte(`{"model":"gpt-5.6-codex","stream":true,"prompt_cache_key":"`+thread+`"}`),
+		"token", true, thread, true,
+	)
+	require.NoError(t, err)
+
+	session := req.Header.Get("session-id")
+	require.Equal(t, codexUpstreamSessionID(5, account, thread), session)
+	require.NotEqual(t, thread, session)
+	require.Equal(t, session, req.Header.Get("thread-id"))
+	require.Equal(t, session, req.Header.Get("x-client-request-id"))
+	require.Equal(t, session+":2", req.Header.Get("x-codex-window-id"))
+	require.Equal(t, "review", req.Header.Get("x-openai-subagent"))
+	require.Equal(t, scopeCodexAccountIdentityValue(account, 5, codexAccountIdentityKindThread, "0199f3a4-0000-7000-8000-000000000001"), req.Header.Get("x-codex-parent-thread-id"))
+	for _, legacy := range []string{"session_id", "conversation_id", "OpenAI-Beta"} {
+		require.Empty(t, req.Header.Values(legacy), legacy)
+	}
+	require.Equal(t, codexCLIVersion, req.Header.Get("version"))
 }

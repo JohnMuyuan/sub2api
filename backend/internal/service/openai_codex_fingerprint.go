@@ -372,9 +372,8 @@ func applyCodexFingerprintHeaders(h http.Header, ids *codexFingerprintIDs) {
 	// session / full 模式：改写所有相关头
 	h.Set("x-codex-window-id", ids.windowID)
 	h.Set("x-client-request-id", ids.threadID)
-	// 连字符形式和下划线形式都改写，保证一致
+	// 官方 Codex 只发连字符形式；下划线形式由 applyCodexSessionHeaders 统一移除。
 	h.Set("session-id", ids.sessionID)
-	h.Set("session_id", ids.sessionID)
 	h.Set("thread-id", ids.threadID)
 
 	rewriteCodexTurnMetadataFields(h, map[string]any{

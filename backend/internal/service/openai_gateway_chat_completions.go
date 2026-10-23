@@ -373,7 +373,8 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	if promptCacheKey != "" {
 		if session := s.harvestPinnedSessionForModel(ctx, account, upstreamModel); session != "" {
 			upstreamReq.Header.Set("session_id", session)
-		} else {
+		} else if !account.UsesOpenAICodexProtocol() {
+			// Codex 账号由 buildUpstreamRequest 按官方形态写好 session-id / thread-id。
 			apiKeyID := getAPIKeyIDFromContext(c)
 			sessionKey := promptCacheKey
 			if !compatPromptCacheTenantIsolated {

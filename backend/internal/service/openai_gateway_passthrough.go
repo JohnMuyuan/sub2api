@@ -734,6 +734,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	}
 
 	// OAuth 透传到 ChatGPT internal API 时补齐必要头。
+	upstreamSessionID := ""
 	if account.UsesOpenAICodexProtocol() {
 		// Current Codex OAuth HTTP no longer negotiates the legacy Responses
 		// experiment. Passthrough may receive it from an older client, so remove
@@ -763,22 +764,23 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 			req.Header.Set("originator", resolveCodexOutboundIdentity("").originator)
 		}
 		// 用隔离后的 session 标识符覆盖客户端透传值，防止跨用户会话碰撞。
-		if clientSessionID == "" {
-			clientSessionID = promptCacheKey
+		// 客户端的 session-id 优先（applyCodexSessionHeaders 保留），其次旧客户端的
+		// session_id，再回退到 prompt_cache_key（官方 Codex 两者同值）与 conversation_id。
+		sessionKey := clientSessionID
+		if sessionKey == "" {
+			sessionKey = promptCacheKey
 		}
-		if clientConversationID == "" {
-			clientConversationID = promptCacheKey
+		if sessionKey == "" {
+			sessionKey = clientConversationID
 		}
 		harvestSession := s.harvestPinnedSessionForModel(ctx, account, extractOpenAICodexTicketModel(body))
 		if harvestSession != "" {
+			// Harvest 绑定的票据只认铸造时的 session_id，不夹带客户端的会话头。
+			deleteCodexClientSessionHeaders(req.Header)
+			req.Header.Del("conversation_id")
 			req.Header.Set("session_id", harvestSession)
 		} else {
-			if clientSessionID != "" {
-				req.Header.Set("session_id", isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), clientSessionID))
-			}
-			if clientConversationID != "" {
-				req.Header.Set("conversation_id", isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), clientConversationID))
-			}
+			upstreamSessionID = codexUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), sessionKey)
 		}
 	} else if isOpenAIResponsesCompactPath(c) {
 		// 透传白名单会放行客户端的 Accept: text/event-stream；compact 上游是
@@ -798,6 +800,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	if s.harvestPinnedSessionForModel(ctx, account, extractOpenAICodexTicketModel(body)) == "" {
 		applyCodexAccountIdentityHeaders(req.Header, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		applyStagedCodexFingerprintHeaders(c, account, req.Header)
+		if account.UsesOpenAICodexProtocol() {
+			applyCodexSessionHeaders(req.Header, upstreamSessionID)
+		}
 	}
 	// 终态收口：透传路径的 OAuth 与非透传完全一致，同样强制统一出站身份
 	// （User-Agent / originator / version 同源自洽），客户端自报身份不会到达上游。

@@ -1046,6 +1046,8 @@ func jsonString(v string) string {
 
 func applyOpenAICodexTicketHarvestIdentity(h http.Header, model string) {
 	ensureCodexIdentityHeaders(h)
+	// Harvest 票据按铸造时的身份绑定，保持其历来携带的 Responses 实验头。
+	h.Set("OpenAI-Beta", "responses=experimental")
 	enforceCodexIdentityHeaders(h)
 	version := strings.TrimSpace(h.Get("version"))
 	if needsOpenAICodexAstraVersion(model) && (version == "" || CompareVersions(version, openAICodexAstraMinVersion) < 0) {

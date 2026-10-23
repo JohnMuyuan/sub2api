@@ -95,6 +95,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		return nil, openAIWSSessionHeaderResolution{}, errExcelOAuthRouteUnavailable
 	}
 	headers := make(http.Header)
+	upstreamSessionID := ""
 	if account == nil || !account.IsOpenAIAgentIdentity() {
 		headers.Set("authorization", "Bearer "+token)
 	}
@@ -132,13 +133,9 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	if harvestSession != "" {
 		headers.Set("session_id", harvestSession)
 	} else if account != nil && account.UsesOpenAICodexProtocol() {
-		apiKeyID := getAPIKeyIDFromContext(c)
-		if sessionResolution.SessionID != "" {
-			headers.Set("session_id", isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), sessionResolution.SessionID))
-		}
-		if sessionResolution.ConversationID != "" {
-			headers.Set("conversation_id", isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), sessionResolution.ConversationID))
-		}
+		// 与官方 Codex WS 握手一致只发 session-id / thread-id / x-client-request-id，
+		// 客户端未带 session-id 时由下方 applyCodexSessionHeaders 用隔离值补齐。
+		upstreamSessionID = codexUpstreamSessionID(getAPIKeyIDFromContext(c), codexAccountIdentitySource(c, account), sessionResolution.SessionID)
 	} else {
 		if sessionResolution.SessionID != "" {
 			headers.Set("session_id", sessionResolution.SessionID)
@@ -159,6 +156,9 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	if harvestSession == "" {
 		applyCodexAccountIdentityHeaders(headers, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		applyStagedCodexFingerprintHeaders(c, account, headers)
+		if account != nil && account.UsesOpenAICodexProtocol() {
+			applyCodexSessionHeaders(headers, upstreamSessionID)
+		}
 	}
 
 	if account != nil && account.UsesOpenAICodexProtocol() {

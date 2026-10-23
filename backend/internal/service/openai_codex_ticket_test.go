@@ -284,7 +284,7 @@ func TestHarvestOpenAICodexTicket_StopsAt292AndUsesHarvestProxy(t *testing.T) {
 	require.Equal(t, "socks5h://user:pass@harvest.example:31", upstream.lastProxyURL)
 	require.Len(t, upstream.requests, 2)
 	require.Empty(t, upstream.requests[0].Header.Get(openAICodexTurnStateHeader))
-	require.Equal(t, openAICodexAstraMinVersion, upstream.requests[0].Header.Get("version"))
+	require.Equal(t, codexCLIVersion, upstream.requests[0].Header.Get("version"))
 	require.Equal(t, HTTPUpstreamProfileOpenAIHarvest, HTTPUpstreamProfileFromContext(upstream.requests[0].Context()))
 	require.True(t, upstream.requests[0].Close)
 }
@@ -1021,8 +1021,8 @@ func TestPinCodexTicketWSAcquireUsesHarvestProxy(t *testing.T) {
 	require.Empty(t, h.Get("x-codex-beta-features"))
 	require.Empty(t, h.Get("x-codex-routing-hint"))
 	require.Equal(t, openAIWSBetaV2Value, h.Get("OpenAI-Beta"))
-	require.Equal(t, openAICodexAstraMinVersion, h.Get("version"))
-	require.Equal(t, buildCodexCLIUserAgent(openAICodexAstraMinVersion), h.Get("user-agent"))
+	require.Equal(t, codexCLIVersion, h.Get("version"))
+	require.Equal(t, codexCLIUserAgent, h.Get("user-agent"))
 }
 
 func TestPinCodexTicketWSAcquireConfiguredHarvestWhenTicketHasNoProxy(t *testing.T) {
@@ -1146,8 +1146,8 @@ func TestBuildUpstreamRequest_BoundTicketPinsHarvestIdentity(t *testing.T) {
 	require.Empty(t, req.Header.Get("x-codex-beta-features"))
 	require.Empty(t, req.Header.Get("accept-language"))
 	require.Empty(t, req.Header.Get("x-codex-routing-hint"))
-	require.Equal(t, openAICodexAstraMinVersion, req.Header.Get("version"))
-	require.Equal(t, buildCodexCLIUserAgent(openAICodexAstraMinVersion), req.Header.Get("user-agent"))
+	require.Equal(t, codexCLIVersion, req.Header.Get("version"))
+	require.Equal(t, codexCLIUserAgent, req.Header.Get("user-agent"))
 	require.Equal(t, "responses=experimental", req.Header.Get("OpenAI-Beta"))
 	got, err := io.ReadAll(req.Body)
 	require.NoError(t, err)

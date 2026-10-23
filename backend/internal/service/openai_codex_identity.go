@@ -211,7 +211,9 @@ func ensureCodexIdentityHeaders(h http.Header) {
 	if strings.TrimSpace(h.Get("version")) == "" {
 		h.Set("version", identity.version)
 	}
-	h.Set("OpenAI-Beta", "responses=experimental")
+	// 官方 Codex 的 HTTP 请求不带 OpenAI-Beta（只在 WS 握手声明 responses_websockets），
+	// 这里不再补 responses=experimental，也不保留客户端自带的值。
+	h.Del("OpenAI-Beta")
 }
 
 // applyOpenAICodexProbeHeaders 为合成探测请求补齐 Codex 身份和引擎指纹。
