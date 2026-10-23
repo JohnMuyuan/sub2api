@@ -8,7 +8,7 @@ const { update, updateUserAttributeValues, showSuccess, showError, auth } = vi.h
   updateUserAttributeValues: vi.fn(),
   showSuccess: vi.fn(),
   showError: vi.fn(),
-  auth: { isSimpleMode: false }
+  auth: { isSimpleMode: false, isAdmin: false }
 }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => auth }))
 
@@ -54,6 +54,7 @@ const mountModal = (concurrency: number, overrides: Record<string, unknown> = {}
       ObserverGroupSelector: true,
       Icon: true,
       UserAttributeForm: true,
+      ModerationUserPanel: true,
       TotpStepUpDialog: true
     }
   }
@@ -62,6 +63,7 @@ const mountModal = (concurrency: number, overrides: Record<string, unknown> = {}
 describe('UserEditModal concurrency', () => {
   beforeEach(() => {
     auth.isSimpleMode = false
+    auth.isAdmin = false
     update.mockReset()
     updateUserAttributeValues.mockReset()
     showSuccess.mockReset()
@@ -202,5 +204,19 @@ describe('UserEditModal account read-only role', () => {
     expect(update).toHaveBeenCalledWith(7, expect.objectContaining({ role: 'account_viewer', observer_group_ids: [10] }))
     expect(update.mock.calls.at(-1)?.[1]).not.toHaveProperty('observer_setup')
     wrapper.unmount()
+  })
+})
+
+describe('UserEditModal content moderation controls', () => {
+  it('exposes the persisted controls for the selected user only to administrators', async () => {
+    auth.isAdmin = true
+    const wrapper = mountModal(1)
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'ModerationUserPanel' }).props('userId')).toBe(7)
+    wrapper.unmount()
+    auth.isAdmin = false
+    const observer = mountModal(1)
+    await flushPromises()
+    expect(observer.findComponent({ name: 'ModerationUserPanel' }).exists()).toBe(false)
   })
 })
