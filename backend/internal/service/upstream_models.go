@@ -1434,7 +1434,7 @@ func extractUpstreamModelIDs(body []byte) ([]string, error) {
 }
 
 func extractGrokUpstreamModelIDs(body []byte) ([]string, error) {
-	return extractUpstreamModelIDsWithSelector(body, grokUpstreamModelEntryID)
+	return parseGrokCatalogModelIDs(body)
 }
 
 func extractUpstreamModelCatalog(body []byte, grok bool) ([]string, map[string]UpstreamModelMetadata, error) {
