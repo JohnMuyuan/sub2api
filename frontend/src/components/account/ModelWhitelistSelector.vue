@@ -102,7 +102,7 @@
         {{ t('admin.accounts.fillRelatedModels') }}
       </button>
       <button
-        v-if="canSyncUpstream"
+        v-if="canSyncUpstream && showSyncButton"
         type="button"
         data-testid="sync-upstream-models"
         @click="syncUpstreamModels"
@@ -160,14 +160,15 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: string[]
   modelMappings?: { from: string; to: string }[]
   platform?: string
   platforms?: string[]
   accountId?: number
   syncCredentials?: SyncUpstreamPreviewParams
-}>()
+  showSyncButton?: boolean
+}>(), { showSyncButton: true })
 
 const emit = defineEmits<{
   'update:modelValue': [value: string[]]
@@ -376,6 +377,8 @@ const syncUpstreamModels = async () => {
     }
   }
 }
+
+defineExpose({ syncUpstreamModels, isSyncingUpstream })
 
 const clearAll = () => {
   emit('update:modelValue', [])
