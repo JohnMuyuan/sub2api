@@ -5,6 +5,8 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -235,7 +237,7 @@ func TestPriorityLatencyAvailabilityFrozenScope(t *testing.T) {
 }
 
 func TestPriorityLatencyAvailabilitySafetyNoWaiver(t *testing.T) {
-	for _, gate := range []string{"admin disabled", "auth error", "rate limited", "overloaded", "excluded", "privacy"} {
+	for _, gate := range []string{"admin disabled", "auth error", "rate limited", "overloaded", "excluded", "privacy", "quota"} {
 		t.Run(gate, func(t *testing.T) {
 			svc, scheduler, req := availabilityFixture(t, 16000)
 			repo := svc.accountRepo.(schedulerGroupAwareOpenAIAccountRepo)
@@ -253,9 +255,15 @@ func TestPriorityLatencyAvailabilitySafetyNoWaiver(t *testing.T) {
 				req.ExcludedIDs = map[int64]struct{}{1: {}}
 			case "privacy":
 				req.RequirePrivacySet = true
+			case "quota":
+				repo.accounts[0].Type = AccountTypeOAuth
+				repo.accounts[0].Extra["codex_7d_used_percent"] = 95.0
+				repo.accounts[0].Extra["codex_7d_reset_at"] = until.Format(time.RFC3339)
+				repo.accounts[0].Extra["codex_usage_updated_at"] = time.Now().Add(-time.Minute).Format(time.RFC3339)
 			}
 			svc.accountRepo = repo
-			selected, err := modeSelect(t, scheduler, req)
+			ctx := withOpenAIQuotaAutoPauseSettings(context.Background(), OpsOpenAIAccountQuotaAutoPauseSettings{DefaultThreshold7d: 0.9})
+			selected, _, err := scheduler.Select(ctx, req)
 			require.Nil(t, selected)
 			require.Error(t, err, "availability must never waive "+gate)
 		})
@@ -338,4 +346,79 @@ func TestPriorityLatencyAvailabilityConfiguredMetric(t *testing.T) {
 		got[id] = true
 	}
 	require.Equal(t, map[int64]bool{5: true, 6: true}, got, "configured effective P95 must win over unrelated legacy P90")
+}
+
+func TestPriorityLatencyAvailabilityHTTPAndChatTransport(t *testing.T) {
+	for _, chat := range []bool{false, true} {
+		t.Run(map[bool]string{false: "responses", true: "chat to responses"}[chat], func(t *testing.T) {
+			svc, scheduler, req := availabilityFixture(t, 16000, 17000, 18000, 19000, 20000, 21000)
+			if chat {
+				req.InboundEndpoint = "/v1/chat/completions"
+			}
+			selected, err := modeSelect(t, scheduler, req)
+			require.NoError(t, err)
+			require.NotNil(t, selected)
+			selected.Account.Credentials = map[string]any{"api_key": "sk-synthetic", "base_url": "https://compat.example"}
+			selected.Account.Extra["openai_responses_mode"] = "force_responses"
+			wire := `{"id":"resp_fallback_http","object":"response","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"fallback completed"}]}],"usage":{"input_tokens":1,"output_tokens":1}}`
+			upstream := &httpUpstreamRecorder{resp: priorityMockResponse(200, wire, false)}
+			svc.httpUpstream = upstream
+			upstream.resp.Body = &latencyInFlightBody{Reader: strings.NewReader(wire), start: func() {
+				setModeSignal(svc, req, 6, func(v *PrioritySchedulingSignal) { v.P90TTFTMs = 500; v.LatestBadLatencyAt = nil })
+			}}
+			body := []byte(`{"model":"gpt-test","input":"synthetic","stream":false}`)
+			if chat {
+				body = []byte(`{"model":"gpt-test","messages":[{"role":"user","content":"synthetic"}],"stream":false}`)
+			}
+			ctx := ContextWithSelectionPriorityRequest(WithPrioritySchedulingObservation(context.Background(), req.GroupID, req.HistoryModel, req.InboundEndpoint), selected)
+			c := newOpenAIRejectedFieldTestContext(body)
+			c.Request = c.Request.WithContext(ctx)
+			c.Request.URL.Path = req.InboundEndpoint
+			var result *OpenAIForwardResult
+			if chat {
+				result, err = svc.ForwardAsChatCompletions(ctx, c, selected.Account, body, "", "")
+			} else {
+				result, err = svc.Forward(ctx, c, selected.Account, body)
+			}
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Len(t, upstream.requests, 1, "late healthy account never interrupts or replays an admitted generation")
+			require.Equal(t, "/v1/responses", upstream.requests[0].URL.Path)
+			require.ErrorIs(t, svc.CheckPriorityLatencySelection(ctx, selected), ErrPriorityLatencyUnavailable, "a new turn cannot keep the stopped fallback after a healthy peer returns")
+		})
+	}
+}
+
+func TestPriorityLatencyAvailabilityPreWriteRecheck(t *testing.T) {
+	svc, scheduler, req := availabilityFixture(t, 16000, 17000, 18000, 19000, 20000, 21000)
+	selected, err := modeSelect(t, scheduler, req)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	ctx := ContextWithSelectionPriorityRequest(context.Background(), selected)
+	ctx, err = svc.beginPriorityLatencyTurn(ctx, nil, selected.Account, req.RequestedModel)
+	require.NoError(t, err)
+	setModeSignal(svc, req, 6, func(v *PrioritySchedulingSignal) { v.P90TTFTMs = 500; v.LatestBadLatencyAt = nil })
+	upstream := &httpUpstreamRecorder{resp: priorityMockResponse(200, `{"status":"completed","output":[]}`, false)}
+	svc.httpUpstream = upstream
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://compat.example/v1/responses", strings.NewReader(`{"model":"gpt-test"}`))
+	require.NoError(t, err)
+	_, err = svc.doOpenAIProxyAttempt(request, selected.Account, runtimeProxyEgress{})
+	require.ErrorIs(t, err, ErrPriorityLatencyUnavailable, "history learned during preparation must be checked before actual write")
+	require.Empty(t, upstream.requests, "pre-write rejection must send no generation")
+}
+
+func TestPriorityLatencyAvailabilityNoRefillAcrossSelection(t *testing.T) {
+	svc, scheduler, req := availabilityFixture(t, 16000, 17000, 18000, 19000, 20000, 21000)
+	selected, err := modeSelect(t, scheduler, req)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	ctx := ContextWithSelectionPriorityRequest(context.Background(), selected)
+	req.ExcludedIDs = map[int64]struct{}{1: {}, 2: {}}
+	retry, _, err := scheduler.Select(ctx, req)
+	if retry != nil && retry.ReleaseFunc != nil {
+		retry.ReleaseFunc()
+	}
+	require.Nil(t, retry)
+	require.ErrorIs(t, err, ErrPriorityLatencyUnavailable, "one logical request cannot expand fallback by excluding each failed member")
+	_ = svc
 }
