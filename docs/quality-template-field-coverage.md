@@ -46,4 +46,4 @@
 
 ## 验收证据
 
-实现中的本机定向前端已有旧用例 156/156、新增完整 action × 新建/单编辑/批量 × 模板/账号源矩阵等 171/171 通过。真实 HTTP/PG、旧源码 RED、新源码 GREEN 与最终精确 head CI 均 pending，见同一 PR 的第二项验收清单。本机未运行 Go 动态/编译、Docker、全量前端 build/lint/typecheck；无生产、付费请求、合并、发布或部署。
+实现中的本机定向前端已有旧用例 156/156、新增完整 action × 新建/单编辑/批量 × 模板/账号源矩阵等及 API/ownership 用例共 186/186 通过。真实 HTTP/PG、旧源码 RED、新源码 GREEN 与最终精确 head CI 均 pending，见同一 PR 的第二项验收清单。本机未运行 Go 动态/编译、Docker、全量前端 build/lint/typecheck；无生产、付费请求、合并、发布或部署。

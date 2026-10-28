@@ -174,6 +174,8 @@ func TestQualityTemplateCompleteRejectsInvalidGroupsAndPermissions(t *testing.T)
 		require.Equal(t, 403, w.Code, w.Body.String())
 	}
 	body["account_id"] = f.Account
+	delete(body, "auto_recover")
+	delete(body["pelican_config"].(map[string]any)["quality"].(map[string]any), "judge")
 	w = qualityLiveRequest(completeTemplateRouter(t, true), "POST", "/plans", body)
 	require.Equal(t, 403, w.Code, w.Body.String())
 	require.JSONEq(t, before, completeUnchangedBusiness(t))
