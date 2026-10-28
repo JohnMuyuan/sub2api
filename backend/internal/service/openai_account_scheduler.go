@@ -454,7 +454,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 
 	if priorityHardStopApplies(s.service.prioritySchedulingRuntimeConfig(), req) {
 		// Failover within this request cannot refill an already opened fallback.
-		if prior, ok := ctx.Value(prioritySelectionRequestKey{}).(OpenAIAccountScheduleRequest); ok && prior.priorityLatencyPool != nil && prior.priorityLatencyPool.fallback && prior.priorityLatencyPool.key == priorityHistoryKey(req, s.service.prioritySchedulingRuntimeConfig()) {
+		if prior, ok := ctx.Value(prioritySelectionRequestKey{}).(OpenAIAccountScheduleRequest); ok && prior.priorityLatencyPool != nil && prior.priorityLatencyPool.fallbackActive() && prior.priorityLatencyPool.key == priorityHistoryKey(req, s.service.prioritySchedulingRuntimeConfig()) {
 			req.priorityLatencyPool = prior.priorityLatencyPool
 		}
 		prepared, prepareErr := s.preparePriorityLatencyRequest(ctx, req)

@@ -427,3 +427,19 @@ func TestPriorityLatencyAvailabilityNoRefillAcrossSelection(t *testing.T) {
 	require.ErrorIs(t, err, ErrPriorityLatencyUnavailable, "one logical request cannot expand fallback by excluding each failed member")
 	_ = svc
 }
+
+func TestPriorityLatencyAvailabilityLastHealthyStopsDuringWait(t *testing.T) {
+	svc, scheduler, req := availabilityFixture(t, 500, 17000, 18000, 19000, 20000, 21000)
+	svc.concurrencyService = NewConcurrencyService(schedulerTestConcurrencyCache{acquireResults: map[int64]bool{1: false}})
+	selected, err := modeSelect(t, scheduler, req)
+	require.NoError(t, err)
+	require.NotNil(t, selected.WaitPlan)
+	require.Equal(t, int64(1), selected.Account.ID)
+	setModeSignal(svc, req, 1, func(v *PrioritySchedulingSignal) { v.P90TTFTMs = 16000; bad := time.Now(); v.LatestBadLatencyAt = &bad })
+	require.NoError(t, svc.CheckPriorityLatencySelection(context.Background(), selected), "last healthy stops during wait: open the same authorized lowest band instead of an avoidable 503")
+	outside, err := svc.accountRepo.GetByID(context.Background(), 3)
+	require.NoError(t, err)
+	forged := *selected
+	forged.Account = outside
+	require.ErrorIs(t, svc.CheckPriorityLatencySelection(context.Background(), &forged), ErrPriorityLatencyUnavailable, "late fallback is frozen once and cannot expand")
+}

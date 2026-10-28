@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -32,14 +33,31 @@ func priorityLatencyStopped(c PrioritySchedulingConfig, item openAIAccountCandid
 	return c.LatencyPenaltyMode == PriorityLatencyStop && slices.Contains(scorePriorityCandidate(c, item, signal, now).Reasons, "latency_above_target")
 }
 
-// Immutable request-local membership. Rechecks may reject members, but never
-// refill from a slower rank after a slot wait, sticky shortcut or history refresh.
+// Request-local eligible universe. The first fallback opening freezes membership;
+// later checks cannot refill from a slower rank after waits or history refreshes.
 // Only IDs and exact measurement scope survive in the selection context.
 type priorityLatencyPool struct {
 	key      string
 	accounts []openAIAccountCandidateScore
 	allowed  map[int64]struct{}
-	fallback bool
+	fallback atomic.Pointer[priorityLatencyFallback]
+}
+
+type priorityLatencyFallback struct{ allowed map[int64]struct{} }
+
+func (p *priorityLatencyPool) fallbackActive() bool { return p.fallback.Load() != nil }
+
+// Freeze the first fallback set, including when the last healthy member becomes
+// stopped during a slot/handshake wait. Atomic publication prevents concurrent
+// guards from opening different sets. Later history can only narrow membership.
+func (p *priorityLatencyPool) members(current map[int64]struct{}, fallback bool) map[int64]struct{} {
+	if fallback {
+		p.fallback.CompareAndSwap(nil, &priorityLatencyFallback{allowed: current})
+	}
+	if opened := p.fallback.Load(); opened != nil {
+		return opened.allowed
+	}
+	return p.allowed
 }
 
 func priorityLatencyMeasured(c PrioritySchedulingConfig, score PrioritySchedulingScore) bool {
@@ -66,7 +84,9 @@ func (s *defaultOpenAIAccountScheduler) preparePriorityLatencyRequest(ctx contex
 	history := s.service.priorityHistory(req, cfg, pool)
 	now := time.Now()
 	admission := &priorityLatencyPool{key: priorityHistoryKey(req, cfg)}
-	admission.allowed, admission.fallback = priorityLatencyAllowed(cfg, pool, history, now)
+	allowed, fallback := priorityLatencyAllowed(cfg, pool, history, now)
+	admission.allowed = allowed
+	admission.members(allowed, fallback)
 	for i := range pool {
 		item := &pool[i]
 		item.priorityErrors = s.priorityErrorEvidence(req, cfg, item.account.ID, now)
@@ -142,20 +162,16 @@ func (s *OpenAIGatewayService) priorityLatencyAdmission(req OpenAIAccountSchedul
 		if admission.key != priorityHistoryKey(req, cfg) {
 			return priorityLatencyAdmissionError(false)
 		}
-		if _, allowed := admission.allowed[account.ID]; !allowed {
-			return priorityLatencyAdmissionError(true)
-		}
 		pool = admission.accounts
 	}
 	history := s.priorityHistory(req, cfg, pool)
 	signal, known := history.signals[account.ID]
 	stopped := known && priorityLatencyStopped(cfg, openAIAccountCandidateScore{account: account}, signal, time.Now())
 	if admission != nil {
-		if !admission.fallback && stopped {
-			return priorityLatencyAdmissionError(true)
-		}
-		current, _ := priorityLatencyAllowed(cfg, pool, history, time.Now())
-		if _, allowed := current[account.ID]; !allowed {
+		current, fallback := priorityLatencyAllowed(cfg, pool, history, time.Now())
+		members := admission.members(current, fallback)
+		_, original := members[account.ID]
+		if _, allowed := current[account.ID]; !original || !allowed {
 			return priorityLatencyAdmissionError(known)
 		}
 		return nil
@@ -185,9 +201,10 @@ func (s *defaultOpenAIAccountScheduler) filterPriorityLatencyAccounts(req OpenAI
 			return nil, priorityLatencyAdmissionError(false)
 		}
 		history := s.service.priorityHistory(req, cfg, admission.accounts)
-		current, _ := priorityLatencyAllowed(cfg, admission.accounts, history, time.Now())
+		current, fallback := priorityLatencyAllowed(cfg, admission.accounts, history, time.Now())
+		members := admission.members(current, fallback)
 		for _, account := range accounts {
-			_, original := admission.allowed[account.ID]
+			_, original := members[account.ID]
 			_, ready := current[account.ID]
 			if original && ready {
 				allowed = append(allowed, account)
