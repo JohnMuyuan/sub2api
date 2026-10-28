@@ -18,6 +18,7 @@ jobs:
       postgres:
         image: postgres:16
         env:
+      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           POSTGRES_USER: scoped_ci
           POSTGRES_PASSWORD: scoped_ci_only
           POSTGRES_DB: scoped_ci
@@ -31,6 +32,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
@@ -60,13 +62,14 @@ jobs:
         working-directory: backend
         run: |
           git diff --exit-code
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
           git rev-parse HEAD
           set -euo pipefail
-          go test -tags=unit ./internal/config ./internal/pkg/pagination ./internal/pkg/response ./internal/pkg/antigravity ./internal/pkg/gemini ./internal/pkg/geminicli ./internal/pkg/adminaccess ./internal/repository ./internal/securityaudit ./internal/handler ./internal/handler/admin ./internal/server/middleware ./internal/server/routes ./internal/service -run 'Test(Pagination|ParsePagination|_parseInt|Paginate|MergeBalanceHistoryCodesLargePage|ParseOpsOpenAITokenStatsFilter|PromptAdminRejects|HandleUpstreamError_Zhipu|CNProviderResponseIndicatesFrequencyLimit|CNProviderQuotaSnapshotNearExhausted|AdminService_UpdateUser_AdminGuards|ParseOpenAIImagesRequest_Multipart|ParseGrokMediaRequest_Multipart|MalformedFunctionCallTransform|AntigravityMalformedFunctionCall|ForwardAsChatCompletions_StrictDeveloperRole|NormalizeStrictChatDeveloperRoles|ClaudeCodeFingerprint|SyncBillingHeaderVersion|BuildOAuthRequest_Billing|MergeWebSearchEmulation|ChannelService_ApplyUpdateInput|OpenAIModelsSingleflight|LoadGeminiSameAccountRetries|Gemini.*(Retry|Retries|BoundCache|Declared|NativeModels|DefaultTestModel)|GatewayModels_Gemini|DefaultModels|Scoped|Custom|LegacyAdmin|AdminAccess|PanelRate|OpenAIStreamReplayBoundary|GeminiCachedContentMutationRecovery|.*Models.*Admission)' -count=1 -v | tee "$RUNNER_TEMP/upstream-v0219-green.log"
+          go test -tags=unit ./internal/config ./internal/pkg/pagination ./internal/pkg/response ./internal/pkg/antigravity ./internal/pkg/gemini ./internal/pkg/geminicli ./internal/pkg/adminaccess ./internal/repository ./internal/securityaudit ./internal/handler ./internal/handler/admin ./internal/server/middleware ./internal/server/routes ./internal/service -run 'Test(Pagination|ParsePagination|_parseInt|Paginate|MergeBalanceHistoryCodesLargePage|ParseOpsOpenAITokenStatsFilter|PromptAdminRejects|HandleUpstreamError_Zhipu|CNProviderResponseIndicatesFrequencyLimit|CNProviderQuotaSnapshotNearExhausted|AdminService_UpdateUser_AdminGuards|AdminService_DeleteUser_AdminGuard|ParseOpenAIImagesRequest_Multipart|ParseGrokMediaRequest_Multipart|MalformedFunctionCallTransform|AntigravityMalformedFunctionCall|ForwardAsChatCompletions_StrictDeveloperRole|NormalizeStrictChatDeveloperRoles|ClaudeCodeFingerprint|SyncBillingHeaderVersion|BuildOAuthRequest_Billing|MergeWebSearchEmulation|ChannelService_ApplyUpdateInput|OpenAIModelsSingleflight|LoadGeminiSameAccountRetries|Gemini.*(Retry|Retries|BoundCache|Declared|NativeModels|DefaultTestModel)|GatewayModels_Gemini|DefaultModels|Scoped|Custom|LegacyAdmin|AdminAccess|PanelRate|OpenAIStreamReplayBoundary|GeminiCachedContentMutationRecovery|.*Models.*Admission|APIKeyAdmissionModels|FetchCodexModelsManifestAPIKeySharedRefreshSurvivesCallerCancellation|Observer|EnforceStepUp)' -count=1 -v | tee "$RUNNER_TEMP/upstream-v0219-green.log"
           ! grep -E -- '--- SKIP: TestScoped|--- SKIP: TestCustom' "$RUNNER_TEMP/upstream-v0219-green.log"
       - name: Ownership and cancellation race regressions
         working-directory: backend
-        run: go test -race -tags=unit ./internal/service ./internal/server/middleware -run 'TestOpenAIModelsSingleflight|TestScopedAdmin|TestPanelRate' -count=1
+        run: go test -race -tags=unit ./internal/service ./internal/server/middleware -run 'TestOpenAIModelsSingleflight|TestScopedAdmin|TestPanelRate|TestAPIKeyAdmissionModels|TestFetchCodexModelsManifestAPIKeySharedRefreshSurvivesCallerCancellation' -count=1
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
