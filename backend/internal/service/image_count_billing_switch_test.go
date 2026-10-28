@@ -243,7 +243,7 @@ func TestImageCountBillingUsesFallbackWithoutOperatorTokenCard(t *testing.T) {
 // Both APIs must retain operator token-card priority for dedicated and mixed
 // requests. Fixed expected costs make changing only the routing branch observable.
 func TestImageCountBillingPreservesExplicitTokenCardsAcrossGateways(t *testing.T) {
-	for _, source := range []PricingSource{PricingSourceGroup, PricingSourceChannel} {
+	for _, source := range []string{PricingSourceGroup, PricingSourceChannel} {
 		for _, imageEndpoint := range []bool{false, true} {
 			groupID := int64(907)
 			model := "gpt-image-2"

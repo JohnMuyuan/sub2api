@@ -31,6 +31,7 @@ expected = [
     'TestMalformedFunctionCallTransform',
     'TestAntigravityMalformedFunctionCallNonStreaming',
     'TestScopedAdminRegisteredRoutesEnforceDefaultDenyAndAccountScope',
+    'TestImageCountBillingPreservesExplicitTokenCardsAcrossGateways',
     'TestHandleUpstreamError_ZhipuFrequency429UsesShortCooldown',
     'TestGeminiForward_SameAccountRetriesFollowConfig',
     'TestGeminiForwardNative_BoundCacheUpstreamGatewayErrorsRetryablePerPoolModeCodes',
