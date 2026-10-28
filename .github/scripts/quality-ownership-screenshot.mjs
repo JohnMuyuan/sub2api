@@ -75,5 +75,5 @@ try {
   await page.getByTestId('quality-removal-readback').waitFor()
   await page.screenshot({ path: path.join(output, 'orphan-model-removal-readback.png'), fullPage: true })
   if (failures.length) throw new Error('component_render_error')
-  await fs.writeFile(path.join(output, 'verification.json'), JSON.stringify({ commit: process.env.GITHUB_SHA, component: 'QualityOwnershipReview.vue', synthetic: true, liveApiCalls: 0, paidRequests: 0, errors: failures }, null, 2))
+  await fs.writeFile(path.join(output, 'verification.json'), JSON.stringify({ commit: process.env.QUALITY_EXPECTED_HEAD || process.env.GITHUB_SHA, component: 'QualityOwnershipReview.vue', synthetic: true, liveApiCalls: 0, paidRequests: 0, errors: failures }, null, 2))
 } finally { await browser.close(); await server.close() }

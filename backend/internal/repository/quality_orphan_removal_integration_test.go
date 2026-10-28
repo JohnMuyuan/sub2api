@@ -30,6 +30,11 @@ func orphanRemovalFixture(t *testing.T) *qualityBPSFixture {
 	_, err = integrationDB.Exec(`UPDATE scheduled_test_plans SET pelican_config=jsonb_set(pelican_config,'{model_ids}','["sol","astra","missing"]') WHERE id=$1`, f.plan.ID)
 	require.NoError(t, err)
 	require.NoError(t, f.plans.FinishPelican(context.Background(), f.plan.ID, f.until, time.Now()))
+	now := time.Now()
+	for _, verdict := range []string{"success", "failed", "skipped"} {
+		_, err = NewScheduledTestResultRepository(integrationDB).Create(context.Background(), &service.ScheduledTestResult{PlanID: f.plan.ID, QualityRoundID: "orphan-history-round", Status: verdict, PelicanConfig: f.plan.PelicanConfig, StartedAt: now, FinishedAt: now})
+		require.NoError(t, err)
+	}
 	return f
 }
 func orphanPreview(t *testing.T, f *qualityBPSFixture) *service.QualityOwnershipPreview {
@@ -217,4 +222,31 @@ func TestQualityOrphanRemovalConcurrentConfirmations(t *testing.T) {
 		}
 	}
 	require.Equal(t, 1, successes)
+}
+
+func TestQualityOrphanRemovalMatchingAndMappedMarkers(t *testing.T) {
+	for _, mapped := range []bool{false, true} {
+		t.Run(fmt.Sprint(mapped), func(t *testing.T) {
+			f, _, _ := newQualityIsolationFixture(t)
+			require.Equal(t, "groups_removed", isolationRound(f, "failed", "failed"))
+			require.NoError(t, f.plans.FinishPelican(context.Background(), f.plan.ID, f.until, time.Now()))
+			target := "sol"
+			if mapped {
+				f.exec(`UPDATE accounts SET credentials='{"model_mapping":{"public-sol":"sol"}}' WHERE id=$1`)
+				_, err := integrationDB.Exec(`UPDATE scheduled_test_plans SET model_id='public-sol',pelican_config=jsonb_set(pelican_config,'{model_ids}','["public-sol","astra"]') WHERE id=$1`, f.plan.ID)
+				require.NoError(t, err)
+				_, err = integrationDB.Exec(`UPDATE account_quality_states SET state=jsonb_set(state,'{isolation_models}','["public-sol","astra"]') WHERE plan_id=$1`, f.plan.ID)
+				require.NoError(t, err)
+				target = "public-sol"
+			}
+			p := orphanPreview(t, f)
+			e := orphanEntry(t, p, target)
+			require.True(t, e.Ready)
+			require.Equal(t, "remove_matching_marker", e.Effect)
+			require.Equal(t, "sol", e.IsolationModel)
+			require.NoError(t, orphanConfirm(f, p, target))
+			require.NotContains(t, f.extra()[service.QualityModelIsolationKey], "sol")
+			require.Contains(t, f.extra()[service.QualityModelIsolationKey], "astra")
+		})
+	}
 }

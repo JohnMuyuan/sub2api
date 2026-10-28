@@ -128,7 +128,7 @@ func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id i
 	var running sql.NullTime
 	var config, rawState, liveRaw, credentials []byte
 	var primaryModel string
-	var accountStatus string
+	var accountStatus, accountPlatform, accountType string
 	var accountExpires sql.NullTime
 	err = tx.QueryRowContext(ctx, `SELECT account_id,updated_at,running_until,pelican_config,model_id FROM scheduled_test_plans WHERE id=$1 FOR UPDATE`, id).Scan(&accountID, &ruleVersion, &running, &config, &primaryModel)
 	if err == sql.ErrNoRows {
@@ -144,7 +144,7 @@ func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id i
 	if json.Unmarshal(config, &cfg) != nil || cfg.Quality == nil || cfg.Quality.Action == service.QualityActionOpenAITwoFAAdmission {
 		return nil, infraerrors.BadRequest("QUALITY_OWNERSHIP_UNSUPPORTED", "ownership inspection requires an editable quality rule")
 	}
-	err = tx.QueryRowContext(ctx, `SELECT updated_at,COALESCE(extra->'quality_model_isolation','{}'::jsonb),status,expires_at,credentials FROM accounts WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, accountID).Scan(&accountVersion, &liveRaw, &accountStatus, &accountExpires, &credentials)
+	err = tx.QueryRowContext(ctx, `SELECT updated_at,COALESCE(extra->'quality_model_isolation','{}'::jsonb),status,expires_at,credentials,platform,type FROM accounts WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, accountID).Scan(&accountVersion, &liveRaw, &accountStatus, &accountExpires, &credentials, &accountPlatform, &accountType)
 	if err == sql.ErrNoRows {
 		return nil, infraerrors.NotFound("QUALITY_ACCOUNT_NOT_FOUND", "account not found")
 	}
@@ -284,7 +284,7 @@ func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id i
 		}
 	}
 	plan := &service.ScheduledTestPlan{ID: id, AccountID: accountID, ModelID: primaryModel, PelicanConfig: &cfg}
-	account := &service.Account{}
+	account := &service.Account{Platform: accountPlatform, Type: accountType}
 	if len(credentials) > 0 && json.Unmarshal(credentials, &account.Credentials) != nil {
 		return nil, infraerrors.Conflict("QUALITY_OWNERSHIP_UNSUPPORTED_STATE", "model mapping is not readable")
 	}
@@ -348,7 +348,7 @@ func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id i
 	view.ModelRemovals = qualityModelRemovals(plan, account, &state, live, running, accountStatus, accountExpires)
 	// Fence includes full internal expected/current snapshots, not their redacted
 	// projection. Hidden/unrecognized fields and lease changes invalidate consent.
-	view.Fence = qualityDigest([]any{id, accountID, ruleVersion, accountVersion, running, canonicalQualityEntry(config), canonicalQualityEntry(rawState), canonicalQualityEntry(liveRaw), canonicalQualityEntry(groups), accountStatus, accountExpires, primaryModel, qualityDigest(canonicalQualityEntry(credentials)), view.Entries, view.ModelRemovals})
+	view.Fence = qualityDigest([]any{id, accountID, ruleVersion, accountVersion, running, canonicalQualityEntry(config), canonicalQualityEntry(rawState), canonicalQualityEntry(liveRaw), canonicalQualityEntry(groups), accountStatus, accountExpires, accountPlatform, accountType, primaryModel, qualityDigest(canonicalQualityEntry(credentials)), view.Entries, view.ModelRemovals})
 	if request == nil {
 		return view, tx.Commit()
 	}
