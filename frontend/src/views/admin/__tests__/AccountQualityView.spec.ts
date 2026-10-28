@@ -1021,6 +1021,21 @@ describe('quality operations', () => {
     expect(createQualityPreset).not.toHaveBeenCalled(); expect(scheduledTests.create).not.toHaveBeenCalled(); expect(scheduledTests.update).not.toHaveBeenCalled(); expect(createQualityTemplate).not.toHaveBeenCalled(); expect(runQualityPlan).not.toHaveBeenCalled(); wrapper.unmount()
   })
 
+  it('normalizes legacy distribution-template editing without inheriting a punitive policy or result data', async () => {
+    const tpl = groupRule()
+    delete (tpl.pelican_config.quality as any).action
+    tpl.pelican_config.quality!.remove_group_ids = [21]; tpl.pelican_config.quality!.auto_restore = true
+    Object.assign(tpl.pelican_config, { quality_model_actions: { stale: 'isolated' }, trigger_source: 'old-worker' })
+    vi.mocked(listQualityTemplates).mockResolvedValue([tpl])
+    const wrapper = mountView(); await flushPromises(); const vm = wrapper.vm as any
+    vm.editTemplate(tpl); await flushPromises()
+    expect(vm.form.pelican_config.quality.action).toBe('observe_only')
+    expect(vm.form.pelican_config.quality.remove_group_ids).toEqual([])
+    expect(vm.form.pelican_config.quality.auto_restore).toBe(false)
+    expect(vm.form.pelican_config).not.toHaveProperty('quality_model_actions'); expect(vm.form.pelican_config).not.toHaveProperty('trigger_source')
+    expect(updateQualityTemplate).not.toHaveBeenCalled(); expect(scheduledTests.update).not.toHaveBeenCalled(); wrapper.unmount()
+  })
+
   it('defaults a legacy preset without action to safe observation and switches without stale policy fields', async () => {
     const punitive = { ...preset(), id: 18, pelican_config: { question_kind: 'candy' as const, prompt: 'Question', parallel_count: 2, reasoning_effort: 'high', quality: { action: 'isolate_models' as const, remove_group_ids: [21], auto_restore: true, expected_answer: '42', judge: { kind: 'jev' as const, group_id: 0, model_id: '', prompt: 'Grade' } } } }
     const legacy = structuredClone(punitive); legacy.id = 17; delete (legacy.pelican_config.quality as any).action

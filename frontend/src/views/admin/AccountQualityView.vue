@@ -779,7 +779,7 @@ function editTemplate(tpl: QualityRuleTemplate) {
   sourceAccountId.value = sourceRuleId.value = selectedPresetId.value = ''
   bulkEditing.value = false; bulkRuleIds.value = []; bulkFields.value = []; bulkProgress.value = ''
   closeDetails(); error.value = ''; editing.value = null; editingTemplate.value = tpl.id; selectedAccounts.value = []
-  form.value = { ...defaults(), model_id: tpl.model_id, cron_expression: tpl.cron_expression, enabled: tpl.enabled, max_results: tpl.max_results, pelican_config: { ...defaults().pelican_config, ...JSON.parse(JSON.stringify(tpl.pelican_config || {})) } }
+  form.value = reusedForm(tpl)
   form.value.pelican_config.model_ids = (form.value.pelican_config.model_ids || []).filter(model => model !== form.value.model_id)
   form.value.pelican_config.quality.judge ||= defaults().pelican_config.quality.judge
   form.value.pelican_config.quality.bps = qualityBPSForm(form.value.pelican_config.quality.bps)
