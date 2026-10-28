@@ -17,6 +17,8 @@ mutated = [
     'backend/internal/service/antigravity_gateway_streaming.go',
     'backend/internal/service/gemini_messages_compat_service.go',
     'backend/internal/service/ratelimit_cn_providers.go',
+    'backend/internal/service/ratelimit_cn_providers.go',
+    'backend/internal/service/image_billing_count.go',
 ]
 expected = [
     'TestAdminService_UpdateUser_AdminGuardsAreClientErrors',
@@ -29,7 +31,7 @@ expected = [
     'TestChannelService_ApplyUpdateInputMergesWebSearchEmulationDimensions',
     'TestMalformedFunctionCallTransform',
     'TestAntigravityMalformedFunctionCallNonStreaming',
-    'TestImageCountBillingPreservesExplicitTokenCardsAcrossGateways',
+    'TestResolveBillableImageCount',
     'TestHandleUpstreamError_ZhipuFrequency429UsesShortCooldown',
     'TestGeminiForward_SameAccountRetriesFollowConfig',
     'TestGeminiForwardNative_BoundCacheUpstreamGatewayErrorsRetryablePerPoolModeCodes',
@@ -51,8 +53,9 @@ try:
     replace(mutated[3], 'return s.cfg.Gateway.MaxSameAccountRetriesGemini + 1', 'return geminiDefaultSameAccountRetries + 1')
     replace(mutated[3], 'retryable := account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)', 'retryable := false && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)')
     replace(mutated[5], 'cnProviderResponseIndicatesFrequencyLimit(responseBody) &&', 'false && cnProviderResponseIndicatesFrequencyLimit(responseBody) &&')
+    replace(mutated[6], 'if fallbackToOne {', 'if false && fallbackToOne {')
     result = subprocess.run([
-        'go', 'test', '-tags=unit', './internal/service', './internal/pkg/antigravity', './internal/server/routes',
+        'go', 'test', '-tags=unit', './internal/service', './internal/pkg/antigravity',
         '-run', '^(' + '|'.join(expected) + ')$', '-count=1', '-v',
     ], cwd='backend', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     print(result.stdout)
