@@ -72,6 +72,7 @@ func TestQualityOrphanRemovalAtomicScopeContraction(t *testing.T) {
 	f := orphanRemovalFixture(t)
 	ctx := context.Background()
 	p := orphanPreview(t, f)
+	require.True(t, orphanEntry(t, p, "sol").Ready)
 	for _, entry := range p.Entries {
 		if entry.Model == "sol" {
 			require.Equal(t, "orphan_same_owner", entry.Status)
@@ -79,7 +80,6 @@ func TestQualityOrphanRemovalAtomicScopeContraction(t *testing.T) {
 			require.Equal(t, "this_rule", entry.CurrentOwner)
 		}
 	}
-	require.True(t, orphanEntry(t, p, "sol").Ready)
 	require.Equal(t, "remove_orphan_marker_only", orphanEntry(t, p, "sol").Effect)
 	require.False(t, orphanEntry(t, p, "astra").Ready)
 	require.Equal(t, "changed_same_owner", orphanEntry(t, p, "astra").BlockedReason)
