@@ -180,9 +180,24 @@ func (s *defaultOpenAIAccountScheduler) filterPriorityLatencyAccounts(req OpenAI
 		return accounts, nil
 	}
 	allowed := make([]*Account, 0, len(accounts))
-	for _, account := range accounts {
-		if s.service.priorityLatencyAdmission(req, account) == nil {
-			allowed = append(allowed, account)
+	if admission := req.priorityLatencyPool; admission != nil {
+		if admission.key != priorityHistoryKey(req, cfg) {
+			return nil, priorityLatencyAdmissionError(false)
+		}
+		history := s.service.priorityHistory(req, cfg, admission.accounts)
+		current, _ := priorityLatencyAllowed(cfg, admission.accounts, history, time.Now())
+		for _, account := range accounts {
+			_, original := admission.allowed[account.ID]
+			_, ready := current[account.ID]
+			if original && ready {
+				allowed = append(allowed, account)
+			}
+		}
+	} else {
+		for _, account := range accounts {
+			if s.service.priorityLatencyAdmission(req, account) == nil {
+				allowed = append(allowed, account)
+			}
 		}
 	}
 	if len(allowed) == 0 {

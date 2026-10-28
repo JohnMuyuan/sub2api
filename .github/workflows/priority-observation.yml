@@ -27,6 +27,38 @@ concurrency:
 permissions:
   contents: read
 jobs:
+  availability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: '-p=2'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Exact head availability handler and transport regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/priority-availability-logs"
+          git rev-parse HEAD | tee "$RUNNER_TEMP/priority-availability-logs/head.txt"
+          test "$(git rev-parse HEAD)" = '${{ github.event.pull_request.head.sha || github.sha }}'
+          (cd backend && go test -tags=unit ./internal/service ./internal/handler -run '^TestPriorityLatencyAvailability' -count=1 -v -timeout=5m) 2>&1 | tee "$RUNNER_TEMP/priority-availability-logs/green.log"
+          grep -q -- '--- PASS: TestPriorityLatencyAvailabilityPoolBoundaries' "$RUNNER_TEMP/priority-availability-logs/green.log"
+          grep -q -- '--- PASS: TestPriorityLatencyAvailabilityHTTPAndChatTransport' "$RUNNER_TEMP/priority-availability-logs/green.log"
+          grep -q -- '--- PASS: TestPriorityLatencyAvailabilityNativeFallback' "$RUNNER_TEMP/priority-availability-logs/green.log"
+          grep -q -- '--- PASS: TestPriorityLatencyAvailabilityHandlerSlots' "$RUNNER_TEMP/priority-availability-logs/green.log"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: priority-availability-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/priority-availability-logs
+          if-no-files-found: error
   seams:
     runs-on: ubuntu-latest
     timeout-minutes: 40
