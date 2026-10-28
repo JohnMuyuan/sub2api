@@ -106,9 +106,9 @@ func modelOwnershipEntry(model string, expected, current json.RawMessage, id int
 	return entry
 }
 
-// Both paths use the same plan -> account -> state lock order and rebuild the
-// preview. Confirmation updates ownership and rule version only, never accounts,
-// groups, restrictions, concurrency or scheduler switches.
+// All operations rebuild consent under plan -> account -> state locks. Only
+// explicit restoration/removal may change account restrictions; reconciliation
+// continues to retain live restrictions.
 func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id int64, request *service.QualityOwnershipRequest) (*service.QualityOwnershipPreview, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -123,10 +123,11 @@ func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id i
 	var accountID int64
 	var ruleVersion, accountVersion time.Time
 	var running sql.NullTime
-	var config, rawState, liveRaw []byte
+	var config, rawState, liveRaw, credentials []byte
+	var primaryModel string
 	var accountStatus string
 	var accountExpires sql.NullTime
-	err = tx.QueryRowContext(ctx, `SELECT account_id,updated_at,running_until,pelican_config FROM scheduled_test_plans WHERE id=$1 FOR UPDATE`, id).Scan(&accountID, &ruleVersion, &running, &config)
+	err = tx.QueryRowContext(ctx, `SELECT account_id,updated_at,running_until,pelican_config,model_id FROM scheduled_test_plans WHERE id=$1 FOR UPDATE`, id).Scan(&accountID, &ruleVersion, &running, &config, &primaryModel)
 	if err == sql.ErrNoRows {
 		if request != nil && request.Delete {
 			return &service.QualityOwnershipPreview{PlanID: id}, tx.Commit()
@@ -140,7 +141,7 @@ func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id i
 	if json.Unmarshal(config, &cfg) != nil || cfg.Quality == nil || cfg.Quality.Action == service.QualityActionOpenAITwoFAAdmission {
 		return nil, infraerrors.BadRequest("QUALITY_OWNERSHIP_UNSUPPORTED", "ownership inspection requires an editable quality rule")
 	}
-	err = tx.QueryRowContext(ctx, `SELECT updated_at,COALESCE(extra->'quality_model_isolation','{}'::jsonb),status,expires_at FROM accounts WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, accountID).Scan(&accountVersion, &liveRaw, &accountStatus, &accountExpires)
+	err = tx.QueryRowContext(ctx, `SELECT updated_at,COALESCE(extra->'quality_model_isolation','{}'::jsonb),status,expires_at,credentials FROM accounts WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, accountID).Scan(&accountVersion, &liveRaw, &accountStatus, &accountExpires, &credentials)
 	if err == sql.ErrNoRows {
 		return nil, infraerrors.NotFound("QUALITY_ACCOUNT_NOT_FOUND", "account not found")
 	}
@@ -283,7 +284,7 @@ func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id i
 	// never become orphaned by clearing state or deleting the rule.
 	for model, raw := range live {
 		owner, _ := qualityEntryOwner(raw, id)
-		if owner == "this_rule" && (state.Models == nil || len(state.Models.ModelApplied[model]) == 0) {
+		if owner == "this_rule" && (state.Models == nil || (len(state.Models.ModelApplied[model]) == 0 && len(state.Models.ModelRateLimits[model]) == 0)) {
 			entry := modelOwnershipEntry(model, nil, raw, id)
 			entry.Status = "unrecognized"
 			entry.CanRelinquish = false
@@ -324,14 +325,23 @@ func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id i
 			view.OwnershipRetained = true
 		}
 	}
+	plan := &service.ScheduledTestPlan{ID: id, AccountID: accountID, ModelID: primaryModel, PelicanConfig: &cfg}
+	account := &service.Account{}
+	if len(credentials) > 0 && json.Unmarshal(credentials, &account.Credentials) != nil {
+		return nil, infraerrors.Conflict("QUALITY_OWNERSHIP_UNSUPPORTED_STATE", "model mapping is not readable")
+	}
+	view.ModelRemovals = qualityModelRemovals(plan, account, &state, live, running, accountStatus, accountExpires)
 	// Fence includes full internal expected/current snapshots, not their redacted
 	// projection. Hidden/unrecognized fields and lease changes invalidate consent.
-	view.Fence = qualityDigest([]any{id, accountID, ruleVersion, accountVersion, running, canonicalQualityEntry(config), canonicalQualityEntry(rawState), canonicalQualityEntry(liveRaw), canonicalQualityEntry(groups), accountStatus, accountExpires, view.Entries})
+	view.Fence = qualityDigest([]any{id, accountID, ruleVersion, accountVersion, running, canonicalQualityEntry(config), canonicalQualityEntry(rawState), canonicalQualityEntry(liveRaw), canonicalQualityEntry(groups), accountStatus, accountExpires, primaryModel, qualityDigest(canonicalQualityEntry(credentials)), view.Entries, view.ModelRemovals})
 	if request == nil {
 		return view, tx.Commit()
 	}
 	if !request.Confirm || subtle.ConstantTimeCompare([]byte(request.Fence), []byte(view.Fence)) != 1 {
 		return nil, infraerrors.Conflict("QUALITY_OWNERSHIP_PREVIEW_CHANGED", "ownership changed; preview again before confirming")
+	}
+	if request.RemoveModel {
+		return removeQualityOwnedModel(ctx, tx, plan, &state, rawState, live, ruleVersion, view, request)
 	}
 	if request.Delete {
 		// The separate deletion confirmation is fenced too: an edit or new

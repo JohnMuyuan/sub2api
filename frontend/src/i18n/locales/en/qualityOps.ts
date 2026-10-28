@@ -516,5 +516,14 @@ export default {
   "savedModels": "Currently saved models",
   "nameIsLabel": "The rule name is a display label, not a linked preset",
   "ownershipOwners": {"this_rule": "this rule", "other_rule": "another rule", "external": "external / administrator", "absent": "no live entry", "unrecognized": "unrecognized"},
-  "ownershipStates": {"managed": "matches expected", "missing": "entry missing", "external_owner": "externally owned", "changed_same_owner": "same rule marker, changed content; manual review required", "unrecognized": "unrecognized; retained", "group_missing": "group missing", "external_membership_present": "membership externally recreated"}
+  "ownershipStates": {"managed": "matches expected", "missing": "entry missing", "external_owner": "externally owned", "changed_same_owner": "same rule marker, changed content; manual review required", "unrecognized": "unrecognized; retained", "group_missing": "group missing", "external_membership_present": "membership externally recreated"},
+  "modelRemovalTitle": "Release isolation and remove one model",
+  "modelRemovalHelp": "Only the selected model and its rule scope change. Other models and groups are retained. Missing snapshots cannot reconstruct old values; only a complete, exclusive marker still owned by this rule can be removed.",
+  "modelRemovalReason": "Reason",
+  "modelRemovalReasons": {"orphan_marker_recovery": "Recover an orphan marker with no original snapshot", "retire_model": "Stop managing this model"},
+  "modelRemovalConfirm": "I confirm releasing the displayed marker for {model} and immediately removing this model from the rule. Other draft edits still require saving.",
+  "modelRemovalSubmit": "Confirm release and model removal",
+  "modelRemovalReadback": "Readback confirms {model} was removed. Save other draft edits separately.",
+  "modelRemovalEffects": {"remove_target_only": "Remove rule target only; retain restrictions", "remove_missing_target": "Marker missing: remove only the target and its old ownership", "remove_orphan_marker_only": "No original snapshot: remove only this rule’s exclusive isolation marker; no old values restored", "remove_matching_marker": "Remove this rule’s marker matching the original snapshot"},
+  "modelRemovalBlocked": {"not_owned": "The current entry is not owned by this rule.", "additional_or_unrecognized_restriction": "Additional restrictions or unrecognized format; retained for review.", "unrecognized_snapshot": "Unrecognized original snapshot; retained for review.", "changed_same_owner": "The same owner changed the entry; retained for manual review.", "previous_restriction": "The previous entry contains another restriction; retained.", "ambiguous_mapping": "Ambiguous model mapping; retained for review.", "shared_mapping": "Another tested model shares this isolation entry.", "last_model": "Keep at least one model; use the separate restoration flow to remove the whole rule.", "scope_conflict": "The configured and recorded isolation scopes differ.", "account_unavailable": "The account is unavailable.", "rule_running": "The rule is running; wait for completion and preview again."}
 }
