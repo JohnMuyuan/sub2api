@@ -51,8 +51,8 @@ try:
     replace(mutated[2], 'if extractGeminiFinishReason(parsed) == "MALFORMED_FUNCTION_CALL" {', 'if false {')
     replace(mutated[3], 'return s.cfg.Gateway.MaxSameAccountRetriesGemini + 1', 'return geminiDefaultSameAccountRetries + 1')
     replace(mutated[3], 'retryable := account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)', 'retryable := false && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)')
-    replace(mutated[5], 'cnProviderResponseIndicatesFrequencyLimit(responseBody) &&', 'false && cnProviderResponseIndicatesFrequencyLimit(responseBody) &&')
-    replace(mutated[6], 'if fallbackToOne {', 'if false && fallbackToOne {')
+    replace(mutated[4], 'cnProviderResponseIndicatesFrequencyLimit(responseBody) &&', 'false && cnProviderResponseIndicatesFrequencyLimit(responseBody) &&')
+    replace(mutated[5], 'if fallbackToOne {', 'if false && fallbackToOne {')
     result = subprocess.run([
         'go', 'test', '-tags=unit', './internal/service', './internal/pkg/antigravity',
         '-run', '^(' + '|'.join(expected) + ')$', '-count=1', '-v',
