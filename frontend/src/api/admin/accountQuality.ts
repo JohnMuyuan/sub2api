@@ -90,6 +90,11 @@ export async function createQualityPreset(body: QualityRulePresetRequest): Promi
   return data
 }
 
+export async function updateQualityPreset(id: number, body: QualityRulePresetRequest): Promise<QualityRulePreset> {
+  const { data } = await apiClient.put<QualityRulePreset>(`/admin/account-quality-presets/${id}`, body)
+  return data
+}
+
 export interface QualityOwnershipEntry {
   kind: 'model' | 'group'
   model?: string

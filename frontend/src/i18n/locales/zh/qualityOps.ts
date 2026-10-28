@@ -417,6 +417,8 @@ export default {
   "bulkEditTitle": "批量编辑 {count} 条规则",
   "bulkEditHint": "勾选需要统一修改的字段，未勾选的字段保留每条规则自己的值。初始值来自第一条已选规则；检测配置包含检测方式、检测通道、题目、参考答案、推理强度、检测次数和判题模型。",
   "bulkFields": {
+    "retention": "结果保留次数",
+    "trigger": "上游 5xx 触发",
     "model": "检测模型",
     "schedule": "检测频率",
     "test": "检测配置",
@@ -526,5 +528,8 @@ export default {
   "modelRemovalReadback": "已重新读取并确认移除 {model}；其他草稿修改仍需保存。",
   "modelRemovalEffects": {"remove_target_only": "仅移除规则目标，不改限制", "remove_missing_target": "当前标记缺失：仅移除目标及其旧归属", "remove_orphan_marker_only": "原快照缺失：仅移除本规则独占隔离标记，不恢复任何旧值", "remove_matching_marker": "移除与原快照匹配的本规则隔离标记"},
   "modelRemovalBlocked": {"not_owned": "当前项不归本规则所有，不能解除。", "additional_or_unrecognized_restriction": "包含额外限制或格式未知，保留并人工核对。", "unrecognized_snapshot": "原快照不可识别，保留并人工核对。", "changed_same_owner": "仍属本规则但内容已变化，保留并人工核对。", "previous_restriction": "原记录包含其他限制，本操作不覆盖旧值。", "ambiguous_mapping": "模型映射存在歧义，保留并人工核对。", "shared_mapping": "其他受测模型共用该隔离项，不能单独解除。", "last_model": "必须保留至少一个模型；移除整条规则请走独立恢复流程。", "scope_conflict": "当前配置与保存的隔离范围不一致，请先核对。", "account_unavailable": "账号当前不可用，不能解除。", "rule_running": "规则正在运行，请等待本轮完成后重新预览。"},
-  "modelRemovalReadbackFailed": "确认可能已经提交，请重新预览并核对规则模型范围，再继续编辑；不要重复解除。"
+  "modelRemovalReadbackFailed": "确认可能已经提交，请重新预览并核对规则模型范围，再继续编辑；不要重复解除。",
+  "editPreset": "编辑检测模板",
+  "invalidMaxResults": "保留结果数必须为 1–200。",
+  "retentionTooSmall": "保留结果数必须容纳本轮全部模型与样本。"
 }
