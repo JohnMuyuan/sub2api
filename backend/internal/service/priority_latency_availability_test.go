@@ -361,7 +361,12 @@ func TestPriorityLatencyAvailabilityHTTPAndChatTransport(t *testing.T) {
 			selected.Account.Credentials = map[string]any{"api_key": "sk-synthetic", "base_url": "https://compat.example"}
 			selected.Account.Extra["openai_responses_mode"] = "force_responses"
 			wire := `{"id":"resp_fallback_http","object":"response","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"fallback completed"}]}],"usage":{"input_tokens":1,"output_tokens":1}}`
-			upstream := &httpUpstreamRecorder{resp: priorityMockResponse(200, wire, false)}
+			// The real CC -> Responses adapter requests SSE even for a nonstream
+			// client, then collects the terminal before writing the CC response.
+			if chat {
+				wire = "data: {\"type\":\"response.completed\",\"response\":" + wire + "}\n\n"
+			}
+			upstream := &httpUpstreamRecorder{resp: priorityMockResponse(200, wire, chat)}
 			svc.httpUpstream = upstream
 			upstream.resp.Body = &latencyInFlightBody{Reader: strings.NewReader(wire), start: func() {
 				setModeSignal(svc, req, 6, func(v *PrioritySchedulingSignal) { v.P90TTFTMs = 500; v.LatestBadLatencyAt = nil })
