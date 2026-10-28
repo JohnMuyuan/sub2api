@@ -309,3 +309,33 @@ func TestPriorityLatencyAvailabilityNativeFallback(t *testing.T) {
 		})
 	}
 }
+
+func TestPriorityLatencyAvailabilityConfiguredMetric(t *testing.T) {
+	svc, scheduler, req := availabilityFixture(t, 16000, 17000, 18000, 19000, 20000, 21000)
+	cfg := svc.prioritySchedulingRuntimeConfig()
+	cfg.LatencyPercentile = 95
+	cfg.LatencyMeasurement = "attributed_v1"
+	require.NoError(t, svc.settingService.SavePrioritySchedulingConfig(context.Background(), cfg))
+	bad := time.Now().Add(-time.Minute)
+	signals := map[int64]PrioritySchedulingSignal{}
+	pool := []openAIAccountCandidateScore{}
+	repo := svc.accountRepo.(schedulerGroupAwareOpenAIAccountRepo)
+	for i := range repo.accounts {
+		value := 21000 - float64(i)*1000
+		id := repo.accounts[i].ID
+		signals[id] = PrioritySchedulingSignal{Samples: 20, P90TTFTMs: float64(i + 1), SelectedTTFTMs: &value, LatencyPercentile: 95, LatencyMeasurement: "attributed_v1", LatencyEvidenceVersion: 1, LatestBadLatencyAt: &bad}
+		pool = append(pool, openAIAccountCandidateScore{account: &repo.accounts[i]})
+	}
+	svc.usageLogRepo = &priorityReaderStub{signal: signals}
+	require.Eventually(t, func() bool { return svc.priorityHistory(req, cfg, pool).ready() }, 2*time.Second, time.Millisecond)
+	var acquired []int64
+	svc.concurrencyService = NewConcurrencyService(schedulerTestConcurrencyCache{acquireResults: map[int64]bool{1: false, 2: false, 3: false, 4: false, 5: false, 6: false}, acquiredIDs: &acquired})
+	selected, err := modeSelect(t, scheduler, req)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	got := map[int64]bool{}
+	for _, id := range acquired {
+		got[id] = true
+	}
+	require.Equal(t, map[int64]bool{5: true, 6: true}, got, "configured effective P95 must win over unrelated legacy P90")
+}
