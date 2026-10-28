@@ -121,6 +121,21 @@ describe('targeted orphan model removal', () => {
     expect(wrapper.find('[data-testid="quality-model-removal"]').exists()).toBe(false)
     expect(wrapper.emitted('modelRemoved')).toBeUndefined(); expect(removeQualityOwnedModel).toHaveBeenCalledTimes(1); wrapper.unmount()
   })
+  it('clears parent busy state on unmount and ignores a late confirmation result', async () => {
+    vi.mocked(previewQualityOwnership).mockResolvedValue(orphanPreview())
+    let resolve!: (value: QualityOwnershipPreview) => void
+    vi.mocked(removeQualityOwnedModel).mockReturnValueOnce(new Promise(done => { resolve = done }))
+    const wrapper = mount(QualityOwnershipReview, { props: { planId: 7 } }); await flushPromises()
+    await wrapper.get('[data-testid="quality-removal-model"]').setValue('sol')
+    await wrapper.get('[data-testid="quality-removal-reason"]').setValue('retire_model')
+    await wrapper.get('[data-testid="quality-removal-confirm"]').setValue(true)
+    await wrapper.get('[data-testid="quality-remove-model"]').trigger('click'); await flushPromises()
+    expect(wrapper.emitted('working')?.at(-1)).toEqual([true])
+    wrapper.unmount()
+    expect(wrapper.emitted('working')?.at(-1)).toEqual([false])
+    resolve({ ...orphanPreview(), fence: '' }); await flushPromises()
+    expect(wrapper.emitted('modelRemoved')).toBeUndefined(); expect(previewQualityOwnership).toHaveBeenCalledTimes(1)
+  })
   it('keeps draft unchanged if post-confirm readback fails', async () => {
     vi.mocked(previewQualityOwnership).mockResolvedValueOnce(orphanPreview()).mockRejectedValueOnce(new Error('readback unavailable'))
     vi.mocked(removeQualityOwnedModel).mockResolvedValueOnce({ ...orphanPreview(), fence: '' })

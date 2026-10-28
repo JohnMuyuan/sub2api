@@ -67,7 +67,7 @@ watch(working, value => emit('working', value))
 const busy = computed(() => working.value || !!props.disabled)
 watch(() => !!preview.value?.fence && preview.value.action !== 'isolate_models' && !working.value && !error.value, value => { emit('deletable', value); emit('deletionFence', value ? preview.value?.fence || '' : '') }, { immediate: true })
 let generation = 0
-onBeforeUnmount(() => { generation++ })
+onBeforeUnmount(() => { generation++; emit('working', false) })
 const same = (a: readonly (string | number)[], b: readonly (string | number)[]) => JSON.stringify([...new Set(a)].sort()) === JSON.stringify([...new Set(b)].sort())
 const scopeConflict = computed(() => !!preview.value?.action && preview.value.action === 'isolate_models' && props.draftAction !== undefined &&
   (props.draftAction !== 'isolate_models' || !same(preview.value.models, props.draftModels || []) || !same(preview.value.group_ids, props.draftGroupIds || [])))
