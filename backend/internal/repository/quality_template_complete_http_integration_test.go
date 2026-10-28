@@ -186,6 +186,7 @@ func TestQualityTemplateCompleteExistingIsolationGuard(t *testing.T) {
 	r := completeTemplateRouter(t, false)
 	for _, action := range []string{"observe_only", "remove_groups", "disable_scheduling", "isolate_models"} {
 		body := completeTemplatePayload(action, group)
+		delete(body, "auto_recover")
 		before := completeUnchangedBusiness(t)
 		body["preserve_quality_state"] = true
 		w := qualityLiveRequest(r, "PUT", fmt.Sprintf("/plans/%d", f.Plan.ID), body)

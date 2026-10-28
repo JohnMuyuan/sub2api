@@ -3,10 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 // QualityRulePreset has no account, filter, ownership or scheduling identity.
