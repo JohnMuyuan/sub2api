@@ -22,6 +22,7 @@ const (
 	AccountTokenGuardV2ProbeOK        = "ok"
 	AccountTokenGuardV2ProbeAuth      = "auth"
 	AccountTokenGuardV2ProbeTransient = "transient"
+	accountTokenGuardV2PolicyBlocked  = "upstream request or policy denied (403); automatic re-login blocked"
 
 	AccountTokenGuardV2ProbeInterval   = 30 * time.Minute
 	AccountTokenGuardV2RetryInterval   = 5 * time.Minute
@@ -76,6 +77,8 @@ func ValidateAccountTokenGuardV2Rules(rules AccountTokenGuardV2Rules) error {
 }
 
 type AccountTokenGuardV2Record struct {
+	RefreshFailureCode   string
+	LastRefreshFailureAt *time.Time
 	ReloginFailStreak    int
 	LastCountedTaskID    int64
 	AutoReloginExhausted bool
@@ -152,25 +155,27 @@ type AccountTokenGuardV2AccountInput struct {
 }
 
 type AccountTokenGuardV2Account struct {
-	ReloginFailStreak    int                      `json:"relogin_fail_streak"`
-	LastCountedTaskID    int64                    `json:"last_counted_task_id"`
-	AutoReloginExhausted bool                     `json:"auto_relogin_exhausted"`
-	AccountID            int64                    `json:"account_id"`
-	AccountName          string                   `json:"account_name"`
-	AccountStatus        string                   `json:"account_status"`
-	Schedulable          bool                     `json:"schedulable"`
-	Enabled              bool                     `json:"enabled"`
-	AutoReloginEnabled   bool                     `json:"auto_relogin_enabled"`
-	ProbeState           string                   `json:"probe_state"`
-	ProbeDetail          string                   `json:"probe_detail"`
-	FailStreak           int                      `json:"fail_streak"`
-	LastProbeAt          *time.Time               `json:"last_probe_at,omitempty"`
-	LastReauthAt         *time.Time               `json:"last_reauth_at,omitempty"`
-	NextProbeAt          time.Time                `json:"next_probe_at"`
-	CooldownUntil        *time.Time               `json:"cooldown_until,omitempty"`
-	BlockedReason        string                   `json:"blocked_reason,omitempty"`
-	LoginConfig          *OpenAIOAuthReauthConfig `json:"login_config,omitempty"`
-	LatestTask           *OpenAIOAuthReauthTask   `json:"latest_task,omitempty"`
+	RefreshFailure       *CredentialOperationFailure `json:"refresh_failure,omitempty"`
+	ProbeFailure         *CredentialOperationFailure `json:"probe_failure,omitempty"`
+	ReloginFailStreak    int                         `json:"relogin_fail_streak"`
+	LastCountedTaskID    int64                       `json:"last_counted_task_id"`
+	AutoReloginExhausted bool                        `json:"auto_relogin_exhausted"`
+	AccountID            int64                       `json:"account_id"`
+	AccountName          string                      `json:"account_name"`
+	AccountStatus        string                      `json:"account_status"`
+	Schedulable          bool                        `json:"schedulable"`
+	Enabled              bool                        `json:"enabled"`
+	AutoReloginEnabled   bool                        `json:"auto_relogin_enabled"`
+	ProbeState           string                      `json:"probe_state"`
+	ProbeDetail          string                      `json:"probe_detail"`
+	FailStreak           int                         `json:"fail_streak"`
+	LastProbeAt          *time.Time                  `json:"last_probe_at,omitempty"`
+	LastReauthAt         *time.Time                  `json:"last_reauth_at,omitempty"`
+	NextProbeAt          time.Time                   `json:"next_probe_at"`
+	CooldownUntil        *time.Time                  `json:"cooldown_until,omitempty"`
+	BlockedReason        string                      `json:"blocked_reason,omitempty"`
+	LoginConfig          *OpenAIOAuthReauthConfig    `json:"login_config,omitempty"`
+	LatestTask           *OpenAIOAuthReauthTask      `json:"latest_task,omitempty"`
 }
 
 type AccountTokenGuardV2Service struct {
@@ -347,9 +352,10 @@ func (s *AccountTokenGuardV2Service) ListAccounts(ctx context.Context) ([]Accoun
 		view, viewErr := s.recordView(ctx, record)
 		if viewErr != nil {
 			view = &AccountTokenGuardV2Account{
+				RefreshFailure:    storedRefreshFailure(record),
 				ReloginFailStreak: record.ReloginFailStreak, LastCountedTaskID: record.LastCountedTaskID, AutoReloginExhausted: record.AutoReloginExhausted,
 				AccountID: record.AccountID, Enabled: record.Enabled, AutoReloginEnabled: record.AutoReloginEnabled,
-				ProbeState: record.ProbeState, ProbeDetail: record.ProbeDetail, FailStreak: record.FailStreak,
+				ProbeState: record.ProbeState, ProbeDetail: safeProbeOperationDetail(record.ProbeState, record.ProbeDetail), ProbeFailure: probeOperationFailure(record.ProbeState, record.ProbeDetail, record.LastProbeAt), FailStreak: record.FailStreak,
 				LastProbeAt: record.LastProbeAt, LastReauthAt: record.LastReauthAt, NextProbeAt: record.NextProbeAt,
 				CooldownUntil: record.CooldownUntil, BlockedReason: "account or login configuration is unavailable",
 			}
@@ -384,10 +390,11 @@ func (s *AccountTokenGuardV2Service) recordView(ctx context.Context, record Acco
 		lastReauthAt = reauthStatus.Task.FinishedAt
 	}
 	return &AccountTokenGuardV2Account{
+		RefreshFailure:    storedRefreshFailure(record),
 		ReloginFailStreak: record.ReloginFailStreak, LastCountedTaskID: record.LastCountedTaskID, AutoReloginExhausted: record.AutoReloginExhausted,
 		AccountID: record.AccountID, AccountName: account.Name, AccountStatus: account.Status, Schedulable: account.Schedulable,
 		Enabled: record.Enabled, AutoReloginEnabled: record.AutoReloginEnabled,
-		ProbeState: record.ProbeState, ProbeDetail: record.ProbeDetail, FailStreak: record.FailStreak,
+		ProbeState: record.ProbeState, ProbeDetail: safeProbeOperationDetail(record.ProbeState, record.ProbeDetail), ProbeFailure: probeOperationFailure(record.ProbeState, record.ProbeDetail, record.LastProbeAt), FailStreak: record.FailStreak,
 		LastProbeAt: record.LastProbeAt, LastReauthAt: lastReauthAt, NextProbeAt: record.NextProbeAt,
 		CooldownUntil: record.CooldownUntil, BlockedReason: record.BlockedReason,
 		LoginConfig: reauthStatus.Config, LatestTask: reauthStatus.Task,
@@ -498,6 +505,9 @@ func (s *AccountTokenGuardV2Service) runProbe(ctx context.Context, record Accoun
 	} else if pending {
 		completion.BlockedReason = "re-login task active or history reconciliation pending"
 	}
+	if state == AccountTokenGuardV2ProbeTransient && detail == accountTokenGuardV2PolicyBlocked {
+		completion.BlockedReason = detail
+	}
 	switch state {
 	case AccountTokenGuardV2ProbeOK:
 		completion.FailStreak = 0
@@ -547,16 +557,48 @@ func (s *AccountTokenGuardV2Service) probeAccount(ctx context.Context, account *
 		return AccountTokenGuardV2ProbeOK, "credential accepted"
 	}
 	var upstreamErr *codexModelsManifestUpstreamError
-	if errors.As(err, &upstreamErr) && (upstreamErr.statusCode == http.StatusUnauthorized || upstreamErr.statusCode == http.StatusForbidden) {
-		return AccountTokenGuardV2ProbeAuth, fmt.Sprintf("upstream returned %d", upstreamErr.statusCode)
-	}
-	text := strings.ToLower(err.Error())
-	for _, marker := range []string{"unauthorized", "invalid token", "invalid_token", "token expired", "invalid_grant", "requires re-login"} {
-		if strings.Contains(text, marker) {
-			return AccountTokenGuardV2ProbeAuth, "credential was rejected"
+	if errors.As(err, &upstreamErr) && upstreamErr.statusCode == http.StatusForbidden {
+		policy, _, _ := detectOpenAICyberPolicy(upstreamErr.body)
+		if policy || isOpenAIUpstreamSessionBlocked(upstreamErr.body) || isOpenAIRequestScoped403(account, upstreamErr.statusCode, upstreamErr.body) {
+			// These denials say nothing about credential health. Never issue a
+			// fresh login/session to bypass them, or echo the upstream body.
+			return AccountTokenGuardV2ProbeTransient, accountTokenGuardV2PolicyBlocked
 		}
 	}
-	return AccountTokenGuardV2ProbeTransient, "temporary inspection failure"
+	var code string
+	if errors.As(err, &upstreamErr) {
+		code = credentialOperationEnvelope(upstreamErr.body)
+		if code == "unknown" {
+			switch {
+			case upstreamErr.statusCode == http.StatusUnauthorized:
+				code = "requires_relogin"
+			case upstreamErr.statusCode == http.StatusForbidden:
+				code = "authorization_denied"
+			case upstreamErr.statusCode == http.StatusTooManyRequests:
+				code = "rate_limited"
+			case upstreamErr.statusCode >= 500:
+				code = "service_error"
+			}
+		}
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		code = "timeout"
+	} else {
+		var networkError interface{ Timeout() bool }
+		if errors.As(err, &networkError) {
+			code = "transport_error"
+			if networkError.Timeout() {
+				code = "timeout"
+			}
+		} else {
+			code = credentialOperationText(err.Error())
+		}
+	}
+	if code == "requires_relogin" {
+		return AccountTokenGuardV2ProbeAuth, credentialOperationDetail(code)
+	}
+	// Verification, retirement, security denials and unknown failures cannot
+	// create a new login session. Existing retry budgets and leases still apply.
+	return AccountTokenGuardV2ProbeTransient, credentialOperationDetail(code)
 }
 
 // WorkerStatus separates saved login credentials from execution availability.

@@ -448,6 +448,20 @@ describe('managed re-login availability', () => {
     expect(wrapper.text()).toContain('failed: token_exchange · token_exchange_failed · 120 ms')
     expect(wrapper.text()).not.toContain('synthetic-private')
   })
+  it('shows a Session Studio HTTP rejection as a failed client phase', async () => {
+    const data = await api.listGuard()
+    api.listGuard.mockResolvedValue({ ...data, accounts: [{
+      ...data.accounts[0], latest_task: { id: 7, account_id: 42, status: 'failed', stage: 'failed',
+        error: 'synthetic-private', attempt: 1,
+        diagnostic: { engine: 'session_studio', stage: 'http_request', reason: 'http_rejected', elapsed_ms: 120, http_status: 403 } }
+    }] })
+    wrapper = mount(TokenGuardV2View, { global: { stubs: {
+      AppLayout: { template: '<div><slot /></div>' }, SmartOpsNav: true, Pagination: true, OpenAITOTPDialog: true
+    } } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('failed: http_request · http_rejected · 120 ms · HTTP 403')
+    expect(wrapper.text()).not.toContain('synthetic-private')
+  })
   it('separates encrypted credential readiness from a failed runtime', async () => {
     const data = await api.listGuard()
     api.listGuard.mockResolvedValue({
@@ -538,7 +552,8 @@ it('rolls controls back when saving fails', async () => {
   api.updateSwitches.mockRejectedValueOnce(new Error('save failed'))
   await view.get('[data-testid="auto-inspect-42"]').setValue(false); await flushPromises()
   expect((view.get('[data-testid="auto-inspect-42"]').element as HTMLInputElement).checked).toBe(true)
-  expect(view.text()).toContain('save failed')
+  expect(view.text()).toContain('tokenGuardV2.error')
+  expect(view.text()).not.toContain('save failed')
 })
 
 it('preserves legacy engine choices when only concurrency changes', async () => {
