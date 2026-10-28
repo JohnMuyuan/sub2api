@@ -56,29 +56,29 @@
 | [cb295924](https://github.com/Wei-Shaw/sub2api/commit/cb2959245f7ab452e152a2e77bf811f9be66cbfa) | test(api): include image_count_billing in available groups contract | 待代码链核对 |
 | [aa1a1b11](https://github.com/Wei-Shaw/sub2api/commit/aa1a1b11c864a009ddd83e1f9010b0f92bd1da0b) | fix(billing): gate per-image billing by endpoint and pricing mode | 待代码链核对 |
 | [917dbdc7](https://github.com/Wei-Shaw/sub2api/commit/917dbdc705d69a65e1fccdd0bba2dc0f7afdbc67) | fix(gemini): count fileData image outputs for billing | 待代码链核对 |
-| [014cc016](https://github.com/Wei-Shaw/sub2api/commit/014cc016f9a01b0b5ee61493cbb0ff282e81d7ac) | fix(grok): 补全原生 Responses 响应模型审计 | 待代码链核对 |
-| [7131b997](https://github.com/Wei-Shaw/sub2api/commit/7131b997ca0bb5fb68459ced150a1428d3107935) | fix(grok): 补齐聚合路径跨事件模型冲突 | 待代码链核对 |
-| [d01f2eb4](https://github.com/Wei-Shaw/sub2api/commit/d01f2eb42cf4dccc22690acc849be2d6ce54f118) | fix(grok): 固定聚合前序模型审计并跳过非 Grok | 待代码链核对 |
-| [6202da0f](https://github.com/Wei-Shaw/sub2api/commit/6202da0f53b0ed41d889a66c03a61d2854aea0f9) | fix(grok): 统一模型目录解析与观测状态 | 待代码链核对 |
-| [87266a7b](https://github.com/Wei-Shaw/sub2api/commit/87266a7b181024f1e48dcdb3ff5c53018496c30a) | fix(grok): 原子保存模型目录观测快照 | 待代码链核对 |
-| [b1cb2eb1](https://github.com/Wei-Shaw/sub2api/commit/b1cb2eb1f30d5f098fe509964b0d793c3ceb40ea) | fix(grok): 补齐取消与调用方事务的回归断言 | 待代码链核对 |
-| [41a6ff8a](https://github.com/Wei-Shaw/sub2api/commit/41a6ff8ac1209da6057f46e1ae49b92852d3baa2) | fix(grok): 对齐手动同步与后台目录观察 | 待代码链核对 |
-| [635b8353](https://github.com/Wei-Shaw/sub2api/commit/635b8353508eb0b8994afcc5b1ef73c5b270d1b1) | fix(grok): 让旧后台观察测试走 CAS 持久化 | 待代码链核对 |
-| [d4136cea](https://github.com/Wei-Shaw/sub2api/commit/d4136cea5e6c3c8fb40487f3f4692ab72919e8b1) | fix(grok): 提供账号模型目录差异诊断 | 待代码链核对 |
-| [bb11e83c](https://github.com/Wei-Shaw/sub2api/commit/bb11e83c44abe9786c20cffca4445190bf2b63fb) | fix(grok): 裸别名无法核验且自定义 ID 保留大小写 | 待代码链核对 |
-| [60931bce](https://github.com/Wei-Shaw/sub2api/commit/60931bce3114eb1d240e5bd1eb54546181216056) | fix(grok): 展示模型目录诊断并保留编辑草稿 | 待代码链核对 |
-| [ae5705da](https://github.com/Wei-Shaw/sub2api/commit/ae5705da1d0b13c351d52329067eb2763e986f8f) | fix(grok): 同账号刷新不再卡住目录同步 | 待代码链核对 |
-| [2db7ce3d](https://github.com/Wei-Shaw/sub2api/commit/2db7ce3d25a9b2dc8285bbc1fbf51185c1211f43) | fix(grok): 隔离过期目录同步并在切模式后刷新诊断 | 待代码链核对 |
-| [02db748c](https://github.com/Wei-Shaw/sub2api/commit/02db748cd5a8767378c5f174eedf83367655e3bb) | fix(grok): 保留受管目录快照并阻止非法时间与敏感失败日志 | 待代码链核对 |
+| [014cc016](https://github.com/Wei-Shaw/sub2api/commit/014cc016f9a01b0b5ee61493cbb0ff282e81d7ac) | fix(grok): 补全原生 Responses 响应模型审计 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [7131b997](https://github.com/Wei-Shaw/sub2api/commit/7131b997ca0bb5fb68459ced150a1428d3107935) | fix(grok): 补齐聚合路径跨事件模型冲突 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [d01f2eb4](https://github.com/Wei-Shaw/sub2api/commit/d01f2eb42cf4dccc22690acc849be2d6ce54f118) | fix(grok): 固定聚合前序模型审计并跳过非 Grok | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [6202da0f](https://github.com/Wei-Shaw/sub2api/commit/6202da0f53b0ed41d889a66c03a61d2854aea0f9) | fix(grok): 统一模型目录解析与观测状态 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [87266a7b](https://github.com/Wei-Shaw/sub2api/commit/87266a7b181024f1e48dcdb3ff5c53018496c30a) | fix(grok): 原子保存模型目录观测快照 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [b1cb2eb1](https://github.com/Wei-Shaw/sub2api/commit/b1cb2eb1f30d5f098fe509964b0d793c3ceb40ea) | fix(grok): 补齐取消与调用方事务的回归断言 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [41a6ff8a](https://github.com/Wei-Shaw/sub2api/commit/41a6ff8ac1209da6057f46e1ae49b92852d3baa2) | fix(grok): 对齐手动同步与后台目录观察 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [635b8353](https://github.com/Wei-Shaw/sub2api/commit/635b8353508eb0b8994afcc5b1ef73c5b270d1b1) | fix(grok): 让旧后台观察测试走 CAS 持久化 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [d4136cea](https://github.com/Wei-Shaw/sub2api/commit/d4136cea5e6c3c8fb40487f3f4692ab72919e8b1) | fix(grok): 提供账号模型目录差异诊断 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [bb11e83c](https://github.com/Wei-Shaw/sub2api/commit/bb11e83c44abe9786c20cffca4445190bf2b63fb) | fix(grok): 裸别名无法核验且自定义 ID 保留大小写 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [60931bce](https://github.com/Wei-Shaw/sub2api/commit/60931bce3114eb1d240e5bd1eb54546181216056) | fix(grok): 展示模型目录诊断并保留编辑草稿 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [ae5705da](https://github.com/Wei-Shaw/sub2api/commit/ae5705da1d0b13c351d52329067eb2763e986f8f) | fix(grok): 同账号刷新不再卡住目录同步 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [2db7ce3d](https://github.com/Wei-Shaw/sub2api/commit/2db7ce3d25a9b2dc8285bbc1fbf51185c1211f43) | fix(grok): 隔离过期目录同步并在切模式后刷新诊断 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [02db748c](https://github.com/Wei-Shaw/sub2api/commit/02db748cd5a8767378c5f174eedf83367655e3bb) | fix(grok): 保留受管目录快照并阻止非法时间与敏感失败日志 | P2 差异已审；缺失/部分覆盖，保留待办 |
 | [3f1c8f36](https://github.com/Wei-Shaw/sub2api/commit/3f1c8f36ce8c2cd378015830a90e89970b9a9ea7) | chore: update Sponsors | 跳过：保留 fork branding |
-| [0d374b25](https://github.com/Wei-Shaw/sub2api/commit/0d374b25494d7b49915b51af15f9a7eff99a87b7) | fix(grok): 精简目录诊断并按需展开详情 | 待代码链核对 |
-| [c68d3123](https://github.com/Wei-Shaw/sub2api/commit/c68d312372999f696ddca35bb6f394061878602d) | fix(grok): 未知目录详情改为历史标题 | 待代码链核对 |
-| [32c00d6e](https://github.com/Wei-Shaw/sub2api/commit/32c00d6e72135eb367d80d014ff1a929deffae4e) | fix(grok): 诊断文案不再读取继承属性 | 待代码链核对 |
-| [21b5b49d](https://github.com/Wei-Shaw/sub2api/commit/21b5b49d0a5a673c051d16ad807d6b57be3694d5) | fix(grok): 统一目录同步入口并保留模式隔离 | 待代码链核对 |
-| [7f18239b](https://github.com/Wei-Shaw/sub2api/commit/7f18239be2c09bd7c08663bd4d55ee1f73d42571) | fix(grok): 对齐模型编辑布局与响应式展示 | 待代码链核对 |
-| [9534f1c0](https://github.com/Wei-Shaw/sub2api/commit/9534f1c089d67fbfac8784489579791bd50df0e4) | fix(grok): 提高删除图标对比度并补齐同步按钮 Label in Name | 待代码链核对 |
+| [0d374b25](https://github.com/Wei-Shaw/sub2api/commit/0d374b25494d7b49915b51af15f9a7eff99a87b7) | fix(grok): 精简目录诊断并按需展开详情 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [c68d3123](https://github.com/Wei-Shaw/sub2api/commit/c68d312372999f696ddca35bb6f394061878602d) | fix(grok): 未知目录详情改为历史标题 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [32c00d6e](https://github.com/Wei-Shaw/sub2api/commit/32c00d6e72135eb367d80d014ff1a929deffae4e) | fix(grok): 诊断文案不再读取继承属性 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [21b5b49d](https://github.com/Wei-Shaw/sub2api/commit/21b5b49d0a5a673c051d16ad807d6b57be3694d5) | fix(grok): 统一目录同步入口并保留模式隔离 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [7f18239b](https://github.com/Wei-Shaw/sub2api/commit/7f18239be2c09bd7c08663bd4d55ee1f73d42571) | fix(grok): 对齐模型编辑布局与响应式展示 | P2 差异已审；缺失/部分覆盖，保留待办 |
+| [9534f1c0](https://github.com/Wei-Shaw/sub2api/commit/9534f1c089d67fbfac8784489579791bd50df0e4) | fix(grok): 提高删除图标对比度并补齐同步按钮 Label in Name | P2 差异已审；缺失/部分覆盖，保留待办 |
 | [3ce09c8a](https://github.com/Wei-Shaw/sub2api/commit/3ce09c8aff085ce42538d539d515742d8650e6f0) | fix(billing): keep tokens for channel per-request image tiers | 待代码链核对 |
-| [dfc13ce7](https://github.com/Wei-Shaw/sub2api/commit/dfc13ce7f9ff9300c524d21d871f672c91d235c2) | fix(grok): 修复模型目录审计相关 lint 错误 | 待代码链核对 |
+| [dfc13ce7](https://github.com/Wei-Shaw/sub2api/commit/dfc13ce7f9ff9300c524d21d871f672c91d235c2) | fix(grok): 修复模型目录审计相关 lint 错误 | P2 差异已审；缺失/部分覆盖，保留待办 |
 | [cde6ddfd](https://github.com/Wei-Shaw/sub2api/commit/cde6ddfd8f41e1cf173ed83ac42e79f1e8af34c8) | fix(images): reject oversized multipart uploads instead of truncating them | 已移植 08ed8f1dd；待精确 head CI |
 | [3e18e78a](https://github.com/Wei-Shaw/sub2api/commit/3e18e78ab1d06d3cce1fc019d8969acceafaaf5e) | fix(usage): DeepSeek prompt_cache_hit_tokens 计为缓存读取 | 待代码链核对 |
 | [88d9c43b](https://github.com/Wei-Shaw/sub2api/commit/88d9c43b3e9a30d9e7f74a369114eff0f5674379) | fix(admin): 管理员保护规则返回 400 而不是 500 | 已移植 d50fcedc7；待精确 head CI |
@@ -102,3 +102,33 @@
 目前未取得远端结果，不宣称通过。无生产 SSH/DB/真实邮件/付费调用。未修改账本、结算、支付或价格。
 
 Agent：Codex（唯一 writer，分析/实现/测试/文档）；模型 GPT-6（具体运行型号未提供）；推理强度默认（未手动设置）。
+
+## P2 Grok 树级逐项差异（保留待办）
+
+固定 tag 范围的 JSON 价卡 diff **只有 GPT-6.1 Terra 新条目**，没有 Grok 价卡变化。这批 Grok 是审计/目录/CAS/诊断/UI；现有 realtime、TTS、拒绝策略不构成等价。
+
+| 原 SHA | 已审代码链及增量 |
+| --- | --- |
+| 014cc016 | 部分覆盖：原生 Responses 已复用通用 observer，但本地 forwardGrokResponses 缺少完整结果审计字段；缺失精确原始模型记录。待办，需保留 fork failover/团队限流/计费模型优先级。 |
+| 7131b997 | 部分覆盖：Chat/Messages 有 ObserveOpenAI；非流式聚合仅 Observe(finalResponse.Model)，丢跨事件冲突。待办补聚合前观测。 |
+| d01f2eb4 | 缺失：上述聚合观测需在聚合前固定，且仅对 Grok 接入；fork 通用 observer 与 regional meter 不能覆盖。待办。 |
+| 6202da0f | 缺失：后台 extractGrokModelIDsFromModelsBody(gjson) 与手动 extractGrokUpstreamModelIDs(typed catalog) 分立，无 grok_model_catalog.go、来源身份/可信状态解析。待办。 |
+| 87266a7b | 缺失：后台 syncGrokObservedModels 经 UpdateExtra 无身份/开始时间 CAS；无 account_repo_grok_models.go / grok_model_catalog_store.go。待办。 |
+| b1cb2eb1 | 缺失测试：取消与外层事务原子保存断言依赖上项 CAS；fork admission ownership 无法替代目录 CAS。待办。 |
+| 41a6ff8a | 缺失：手动 sync 返回 typed models，后台 gjson 写旧快照，两入口来源/失败状态不统一。待办；保留 fork headers/SSRF/metadata 增量。 |
+| 635b8353 | 缺失测试：后台观察测试尚未接 CAS store。待办。 |
+| d4136cea | 缺失：无 grok_model_diagnostics.go、模型诊断 handler/DTO endpoint；GetAvailableModels 不是诊断。待办。 |
+| bb11e83c | 缺失：无目录诊断可信裸别名/自定义 ID 大小写比较。现有 provider prefix 归一不等价。待办。 |
+| 60931bce | 缺失：EditAccountModal 有模型映射/同步，但无 GrokModelDiagnosticsPanel 或账号诊断 API；未实现草稿保留与诊断展示。待办。 |
+| ae5705da | 缺失：同账号刷新与目录同步解锁依赖上述新 UI 生命周期。待办。 |
+| 2db7ce3d | 缺失：目录同步 generation/mode 隔离与模式切换后诊断不存在。待办。 |
+| 02db748c | 缺失：lockAndMergeAccountProbeExtra 未保留 grok_observed_models/upstream_model_metadata 受管键；后台 future timestamp/安全失败日志不完整。待办，不能覆盖 fork probe/quality 受管状态。 |
+| 0d374b25 | 缺失：无诊断分层面板及按需展开详情。待办。 |
+| c68d3123 | 缺失：无诊断历史标题呈现。待办。 |
+| 32c00d6e | 缺失：无诊断 own-property lookup，不能以已有其他 i18n 安全判断为等价。待办。 |
+| 21b5b49d | 缺失：未统一白名单/映射同步入口的目录诊断模式隔离。待办。 |
+| 7f18239b | 缺失：模型编辑响应式布局绑定新诊断流；保留本 fork 多平台/quality 控件，待独立适配。 |
+| 9534f1c0 | 缺失：新诊断面板删除对比度与同步 Label in Name 尚未落地。待办。 |
+| dfc13ce7 | 缺失：新诊断 parser/selector/test 的 lint 修复依赖上述实现；不引入孤立修复。待办。 |
+
+Grok 后续移植须保留 fork 团队限流、SSRF 校验、原始响应模型不改变自定义结算、managed probe/quality extra、编辑表单所有 fork 字段及 ownership；本 Draft 未宣称完成 P2。

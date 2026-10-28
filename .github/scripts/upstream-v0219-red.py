@@ -17,6 +17,7 @@ mutated = [
     'backend/internal/service/antigravity_gateway_streaming.go',
     'backend/internal/service/gemini_messages_compat_service.go',
     'backend/internal/pkg/adminaccess/catalog.go',
+    'backend/internal/service/ratelimit_cn_providers.go',
 ]
 expected = [
     'TestAdminService_UpdateUser_AdminGuardsAreClientErrors',
@@ -30,6 +31,9 @@ expected = [
     'TestMalformedFunctionCallTransform',
     'TestAntigravityMalformedFunctionCallNonStreaming',
     'TestScopedAdminRegisteredRoutesEnforceDefaultDenyAndAccountScope',
+    'TestHandleUpstreamError_ZhipuFrequency429UsesShortCooldown',
+    'TestGeminiForward_SameAccountRetriesFollowConfig',
+    'TestGeminiForwardNative_BoundCacheUpstreamGatewayErrorsRetryablePerPoolModeCodes',
 ]
 
 def replace(path, old, new):
@@ -46,6 +50,8 @@ try:
     replace(mutated[1], 'if len(v1Resp.Response.Candidates) > 0 && v1Resp.Response.Candidates[0].FinishReason == "MALFORMED_FUNCTION_CALL" {', 'if false {')
     replace(mutated[2], 'if extractGeminiFinishReason(parsed) == "MALFORMED_FUNCTION_CALL" {', 'if false {')
     replace(mutated[3], 'return s.cfg.Gateway.MaxSameAccountRetriesGemini + 1', 'return geminiDefaultSameAccountRetries + 1')
+    replace(mutated[3], 'retryable := account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)', 'retryable := false && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)')
+    replace(mutated[5], 'cnProviderResponseIndicatesFrequencyLimit(responseBody) &&', 'false && cnProviderResponseIndicatesFrequencyLimit(responseBody) &&')
     replace(mutated[4], '\n\treturn false\n}', '\n\treturn true // mutation: unknown routes incorrectly inherit access\n}')
     result = subprocess.run([
         'go', 'test', '-tags=unit', './internal/service', './internal/pkg/antigravity', './internal/server/routes',
