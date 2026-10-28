@@ -959,6 +959,8 @@ describe('quality operations', () => {
   it('saves reduced scope after targeted orphan release while retaining changed peer and draft settings', async () => {
     const plan = rules()[0]
     plan.model_id = 'sol'; plan.pelican_config!.model_ids = ['sol', 'astra', 'missing']; plan.pelican_config!.quality!.action = 'isolate_models'
+    plan.pelican_config!.question_kind = 'candy'; plan.pelican_config!.prompt = 'Own question'; plan.pelican_config!.quality!.expected_answer = '21'
+    plan.pelican_config!.quality!.judge = { group_id: 21, model_id: 'test-judge', prompt: 'Grade' }
     const p = { plan_id: 1, account_id: 1, rule_version: 'v1', account_version: 'v1', fence: 'a'.repeat(64), action: 'isolate_models', models: ['sol', 'astra', 'missing'], group_ids: plan.pelican_config!.quality!.remove_group_ids, entries: [], relinquishable_count: 0, ownership_retained: true, restrictions_changed: false,
       model_removals: [{ model: 'sol', isolation_model: 'sol', ready: true, effect: 'remove_orphan_marker_only' }, { model: 'astra', isolation_model: 'astra', ready: false, effect: 'remove_target_only', blocked_reason: 'changed_same_owner' }] }
     vi.mocked(previewQualityOwnership).mockResolvedValueOnce(p).mockResolvedValue({ ...p, models: ['astra', 'missing'], model_removals: p.model_removals.slice(1) })

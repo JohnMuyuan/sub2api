@@ -123,7 +123,7 @@ async function removeModel() {
     if (refreshed.models.includes(model) || refreshed.entries.some(entry => entry.kind === 'model' && entry.model === selectedRemoval.value?.isolation_model)) throw new Error('readback_failed')
     preview.value = refreshed; removedModel.value = model; removalModel.value = ''; removalReason.value = ''
     emit('modelRemoved', model); emit('reconciled')
-  } catch (cause) { if (current === generation) { error.value = failure(cause); preview.value = null } }
+  } catch (cause) { if (current === generation) { error.value = failure(cause) + ' ' + t('qualityOps.modelRemovalReadbackFailed'); preview.value = null } }
   finally { if (current === generation) working.value = false }
 }
 watch(() => props.planId, () => { void load() }, { immediate: true })

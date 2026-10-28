@@ -126,7 +126,7 @@ func TestQualityOrphanRemovalAtomicScopeContraction(t *testing.T) {
 	var saved string
 	require.NoError(t, integrationDB.QueryRow(`SELECT state->'models'->'model_applied'->'astra' FROM account_quality_states WHERE plan_id=$1`, f.plan.ID).Scan(&saved))
 	f.exec(`UPDATE accounts SET extra=jsonb_set(extra,'{quality_model_isolation,astra}',$2::jsonb) WHERE id=$1`, saved)
-	require.NotEqual(t, "stale_run", f.apply("failed"))
+	require.Equal(t, "models_isolated", f.apply("failed"))
 	require.NotContains(t, f.extra()[service.QualityModelIsolationKey], "sol")
 }
 

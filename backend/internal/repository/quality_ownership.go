@@ -87,6 +87,9 @@ func modelOwnershipEntry(model string, expected, current json.RawMessage, id int
 	expectedOwner, _ := qualityEntryOwner(expected, id)
 	entry := service.QualityOwnershipEntry{Kind: "model", Model: model, ExpectedPresent: len(expected) > 0, CurrentPresent: owner != "absent", ExpectedOwner: "this_rule", CurrentOwner: owner, CurrentOwnerRuleID: ownerID,
 		ExpectedDigest: qualityDigest(canonicalQualityEntry(expected)), CurrentDigest: qualityDigest(canonicalQualityEntry(current)), ChangedFields: qualityChangedFields(expected, current)}
+	if expectedOwner != "this_rule" {
+		entry.ExpectedOwner = expectedOwner
+	}
 	switch {
 	case expectedOwner != "this_rule":
 		entry.Status = "unrecognized"
@@ -280,11 +283,28 @@ func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id i
 			view.Entries = append(view.Entries, entry)
 		}
 	}
-	// A live marker still naming this rule but absent from its snapshots must
-	// never become orphaned by clearing state or deleting the rule.
+	plan := &service.ScheduledTestPlan{ID: id, AccountID: accountID, ModelID: primaryModel, PelicanConfig: &cfg}
+	account := &service.Account{}
+	if len(credentials) > 0 && json.Unmarshal(credentials, &account.Credentials) != nil {
+		return nil, infraerrors.Conflict("QUALITY_OWNERSHIP_UNSUPPORTED_STATE", "model mapping is not readable")
+	}
+	relevant := map[string]bool{}
+	for _, model := range service.QualityModels(plan) {
+		relevant[model] = true
+		relevant[account.GetMappedModel(model)] = true
+	}
+	seen := map[string]bool{}
+	for _, entry := range view.Entries {
+		if entry.Kind == "model" {
+			seen[entry.Model] = true
+		}
+	}
+	// Inspect actual unrecorded data too, including unknown/no-owner and foreign
+	// markers on configured keys. A same-owner orphan must never disappear from
+	// deletion/restoration guards. All raw fields remain internal.
 	for model, raw := range live {
 		owner, _ := qualityEntryOwner(raw, id)
-		if owner == "this_rule" && (state.Models == nil || (len(state.Models.ModelApplied[model]) == 0 && len(state.Models.ModelRateLimits[model]) == 0)) {
+		if !seen[model] && (owner == "this_rule" || relevant[model]) {
 			entry := modelOwnershipEntry(model, nil, raw, id)
 			entry.Status = "unrecognized"
 			entry.CanRelinquish = false
@@ -324,11 +344,6 @@ func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id i
 		} else {
 			view.OwnershipRetained = true
 		}
-	}
-	plan := &service.ScheduledTestPlan{ID: id, AccountID: accountID, ModelID: primaryModel, PelicanConfig: &cfg}
-	account := &service.Account{}
-	if len(credentials) > 0 && json.Unmarshal(credentials, &account.Credentials) != nil {
-		return nil, infraerrors.Conflict("QUALITY_OWNERSHIP_UNSUPPORTED_STATE", "model mapping is not readable")
 	}
 	view.ModelRemovals = qualityModelRemovals(plan, account, &state, live, running, accountStatus, accountExpires)
 	// Fence includes full internal expected/current snapshots, not their redacted
