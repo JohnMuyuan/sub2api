@@ -508,7 +508,7 @@ export default {
   "ownershipConfirm": "I reviewed the complete differences and confirm relinquishing only missing or externally owned entries. Actual restrictions remain unchanged.",
   "relinquishOldOwnership": "Confirm relinquishing listed ownership",
   "ownershipReconciled": "Ownership reconciled; restrictions unchanged. Preview refreshed; the draft is not saved.",
-  "keepDraftHelp": "Partial reconciliation does not migrate scope. Retained ownership keeps the original scope. Keep your draft; do not rerun a test.",
+  "keepDraftHelp": "Reconciliation alone does not contract rule scope. To remove one model, use the targeted release confirmation above. Save other draft edits separately afterward.",
   "ownershipPreviewChanged": "Ownership or a version changed. Preview again; no automatic retry was made.",
   "ownershipLoadFailed": "Could not inspect or confirm ownership. Preview again; restrictions were not changed.",
   "draftSource": "Draft source",

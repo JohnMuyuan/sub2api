@@ -508,7 +508,7 @@ export default {
   "ownershipConfirm": "我已核对完整差异，确认仅放弃不存在或已属其他主体的旧归属；真实限制保持不变。",
   "relinquishOldOwnership": "确认放弃所列旧归属",
   "ownershipReconciled": "旧归属已对账，真实限制未改动。已重新预览，草稿尚未保存。",
-  "keepDraftHelp": "部分对账不是部分范围迁移；仍有受管项就保留原范围。无需丢弃草稿或重新触发检测。",
+  "keepDraftHelp": "普通对账不会缩减规则范围。若只移除一个模型，请使用上方定向解除并确认；提交后，其余草稿修改仍需保存。",
   "ownershipPreviewChanged": "归属或版本已改变，请重新预览确认；没有自动重试。",
   "ownershipLoadFailed": "无法读取或确认归属，请重新预览；未改动限制。",
   "draftSource": "本次草稿来源",
