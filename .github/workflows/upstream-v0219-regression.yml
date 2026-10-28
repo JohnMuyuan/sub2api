@@ -37,6 +37,13 @@ jobs:
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
+      - name: Isolated inflight memory bound and negative controls
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          go test -tags=unit ./internal/service -run '^TestInflightEstimate_AccountMappingNoDBAndBoundedMemory$' -count=30 -v | tee "$RUNNER_TEMP/inflight-memory-isolated.log"
+          go test -tags=unit ./internal/service -run '^TestInflightEstimate_MemoryMeasurementControls$' -count=1 -v | tee "$RUNNER_TEMP/inflight-memory-controls.log"
       - name: Pagination behavior RED against production baseline
         shell: bash
         run: |
