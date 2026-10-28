@@ -194,3 +194,83 @@ func TestQualityTemplateCompleteExistingIsolationGuard(t *testing.T) {
 		require.JSONEq(t, before, completeUnchangedBusiness(t), "template application cannot bypass existing isolation")
 	}
 }
+
+func TestQualityTemplateCompleteLegacyReadAndRevalidation(t *testing.T) {
+	f, group, _ := repository.NewQualityLiveFixture(t)
+	r := completeTemplateRouter(t, false)
+	body := completeTemplatePayload("", group)
+	// Represent an actually old persisted row, bypassing new-write normalization.
+	raw, _ := json.Marshal(body["pelican_config"])
+	var id int64
+	require.NoError(t, repository.QualityLiveDB().QueryRow(`INSERT INTO quality_rule_presets(name,model_id,cron_expression,enabled,max_results,pelican_config) VALUES('legacy','test-model','*/30 * * * *',false,137,$1) RETURNING id`, string(raw)).Scan(&id))
+	t.Cleanup(func() { _, _ = repository.QualityLiveDB().Exec(`DELETE FROM quality_rule_presets WHERE id=$1`, id) })
+	before := completeUnchangedBusiness(t)
+	loaded := completeFindPreset(t, r, id)
+	require.Equal(t, service.QualityActionObserveOnly, loaded.PelicanConfig.Quality.Action)
+	require.False(t, loaded.PelicanConfig.Quality.AutoRestore)
+	require.Empty(t, loaded.PelicanConfig.Quality.RemoveGroupIDs)
+	require.JSONEq(t, before, completeUnchangedBusiness(t), "legacy read does not write account or plan state")
+	// Valid saved presets can become invalid before application. Rule save must
+	// reject them after the group was removed, without trusting the loaded preset.
+	body = completeTemplatePayload("remove_groups", group)
+	w := qualityLiveRequest(r, "POST", "/presets", body)
+	require.Equal(t, 200, w.Code, w.Body.String())
+	var saved service.QualityRulePreset
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &saved))
+	t.Cleanup(func() {
+		_, _ = repository.QualityLiveDB().Exec(`DELETE FROM quality_rule_presets WHERE id=$1`, saved.ID)
+	})
+	_, err := repository.QualityLiveDB().Exec(`UPDATE groups SET deleted_at=clock_timestamp() WHERE id=$1`, group)
+	require.NoError(t, err)
+	before = completeUnchangedBusiness(t)
+	draft := map[string]any{"pelican_config": saved.PelicanConfig, "model_id": saved.ModelID, "enabled": false, "max_results": 137, "preserve_quality_state": true}
+	w = qualityLiveRequest(r, "PUT", fmt.Sprintf("/plans/%d", f.Plan.ID), draft)
+	require.Equal(t, 400, w.Code, w.Body.String())
+	require.JSONEq(t, before, completeUnchangedBusiness(t))
+}
+
+func TestQualityTemplateCompleteDetectionModesAndProviders(t *testing.T) {
+	for _, kind := range []string{"candy-llm", "random-jev", "probe", "bps-observation"} {
+		t.Run(kind, func(t *testing.T) {
+			f, group, _ := repository.NewQualityLiveFixture(t)
+			r := completeTemplateRouter(t, false)
+			body := completeTemplatePayload("observe_only", group)
+			cfg := body["pelican_config"].(map[string]any)
+			q := cfg["quality"].(map[string]any)
+			switch kind {
+			case "candy-llm":
+				q["judge"] = map[string]any{"kind": "llm", "group_id": group, "model_id": "judge-model", "prompt": "Compare"}
+			case "random-jev":
+				cfg["question_kind"] = "random_reasoning"
+				cfg["prompt"] = ""
+				q["expected_answer"] = ""
+			case "probe":
+				cfg["question_kind"] = "state_probe"
+				cfg["parallel_count"] = 1
+				cfg["model_ids"] = []string{"test-model"}
+				cfg["prompt"] = ""
+				delete(q, "judge")
+				q["expected_answer"] = ""
+			case "bps-observation":
+				cfg["test_channel"] = "bps"
+			}
+			before := completeUnchangedBusiness(t)
+			w := qualityLiveRequest(r, "POST", "/presets", body)
+			require.Equal(t, 200, w.Code, w.Body.String())
+			var saved service.QualityRulePreset
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &saved))
+			t.Cleanup(func() {
+				_, _ = repository.QualityLiveDB().Exec(`DELETE FROM quality_rule_presets WHERE id=$1`, saved.ID)
+			})
+			loaded := completeFindPreset(t, completeTemplateRouter(t, false), saved.ID)
+			require.Equal(t, saved, loaded)
+			require.JSONEq(t, before, completeUnchangedBusiness(t))
+			w = qualityLiveRequest(r, "PUT", fmt.Sprintf("/plans/%d", f.Plan.ID), map[string]any{"pelican_config": loaded.PelicanConfig, "model_id": loaded.ModelID, "enabled": false, "max_results": loaded.MaxResults, "preserve_quality_state": true})
+			require.Equal(t, 200, w.Code, w.Body.String())
+			read, err := f.Plans.GetByID(context.Background(), f.Plan.ID)
+			require.NoError(t, err)
+			read.PelicanConfig.ModelID = ""
+			require.Equal(t, loaded.PelicanConfig, read.PelicanConfig)
+		})
+	}
+}

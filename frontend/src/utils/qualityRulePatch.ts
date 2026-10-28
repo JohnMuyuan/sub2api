@@ -172,6 +172,7 @@ export function buildQualityRulePatch(
     patch.max_results = draft.max_results
   }
   if (fields.includes('enabled')) patch.enabled = draft.enabled
+  if (fields.includes('retention') && !fields.includes('test') && !fields.includes('model') && (plan.pelican_config?.model_ids?.length || 1) * (plan.pelican_config?.parallel_count || 1) > patch.max_results!) throw new Error('qualityOps.retentionTooSmall')
   if (!fields.some(field => ['test', 'action', 'restore', 'trigger'].includes(field)) &&
     !(fields.includes('model') && (draft.pelican_config.model_ids?.length || plan.pelican_config?.model_ids?.length))) return patch
 

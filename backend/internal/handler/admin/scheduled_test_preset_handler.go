@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"net/http"
 
@@ -69,7 +70,8 @@ func (h *ScheduledTestHandler) UpdateQualityPreset(c *gin.Context) {
 }
 
 func qualityPresetError(c *gin.Context, err error) {
-	if infraerrors.Reason(err) != "" {
+	var appErr *infraerrors.ApplicationError
+	if errors.As(err, &appErr) {
 		response.ErrorFrom(c, err)
 	} else {
 		response.BadRequest(c, err.Error())

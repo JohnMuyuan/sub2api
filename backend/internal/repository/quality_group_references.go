@@ -22,12 +22,6 @@ func validateQualityGroupReferences(ctx context.Context, q planRowQuerier, cfg *
 			ids[id] = true
 		}
 	}
-	if policy.Judge != nil && policy.Judge.Kind != "jev" && policy.Judge.GroupID > 0 {
-		ids[policy.Judge.GroupID] = true
-	}
-	if policy.Action == service.QualityActionEnableBPS && policy.BPS != nil && policy.BPS.AutoMoveOn403 && policy.BPS.TargetGroupID > 0 {
-		ids[policy.BPS.TargetGroupID] = true
-	}
 	ordered := []int64{}
 	for id := range ids {
 		ordered = append(ordered, id)
