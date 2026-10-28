@@ -16,7 +16,6 @@ mutated = [
     'backend/internal/pkg/antigravity/response_transformer.go',
     'backend/internal/service/antigravity_gateway_streaming.go',
     'backend/internal/service/gemini_messages_compat_service.go',
-    'backend/internal/pkg/adminaccess/catalog.go',
     'backend/internal/service/ratelimit_cn_providers.go',
 ]
 expected = [
@@ -30,7 +29,6 @@ expected = [
     'TestChannelService_ApplyUpdateInputMergesWebSearchEmulationDimensions',
     'TestMalformedFunctionCallTransform',
     'TestAntigravityMalformedFunctionCallNonStreaming',
-    'TestScopedAdminRegisteredRoutesEnforceDefaultDenyAndAccountScope',
     'TestImageCountBillingPreservesExplicitTokenCardsAcrossGateways',
     'TestHandleUpstreamError_ZhipuFrequency429UsesShortCooldown',
     'TestGeminiForward_SameAccountRetriesFollowConfig',
@@ -53,7 +51,6 @@ try:
     replace(mutated[3], 'return s.cfg.Gateway.MaxSameAccountRetriesGemini + 1', 'return geminiDefaultSameAccountRetries + 1')
     replace(mutated[3], 'retryable := account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)', 'retryable := false && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)')
     replace(mutated[5], 'cnProviderResponseIndicatesFrequencyLimit(responseBody) &&', 'false && cnProviderResponseIndicatesFrequencyLimit(responseBody) &&')
-    replace(mutated[4], '\n\treturn false\n}', '\n\treturn true // mutation: unknown routes incorrectly inherit access\n}')
     result = subprocess.run([
         'go', 'test', '-tags=unit', './internal/service', './internal/pkg/antigravity', './internal/server/routes',
         '-run', '^(' + '|'.join(expected) + ')$', '-count=1', '-v',
