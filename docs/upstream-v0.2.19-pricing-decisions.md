@@ -1,4 +1,6 @@
-# Pricing/call-chain diff — parent decision required
+> Scope update: all named fixed-tag source changes are authorized for implementation, including pricing/usage/per-image and all Grok leaves. Prior hold/approval wording below describes historical findings and no longer blocks integration.
+
+# Pricing/call-chain diff — authorized integration in progress
 
 Scope: fixed ac1b8f12..dece2615 only; compare production e6b30da8f. No external current-price verification or price changes made. Values below describe code, not a claim about current official prices.
 
