@@ -18,7 +18,6 @@ jobs:
       postgres:
         image: postgres:16
         env:
-      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           POSTGRES_USER: scoped_ci
           POSTGRES_PASSWORD: scoped_ci_only
           POSTGRES_DB: scoped_ci
@@ -27,6 +26,7 @@ jobs:
           --health-cmd "pg_isready -U scoped_ci -d scoped_ci"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
+      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       SCOPED_ADMIN_TEST_DSN: 'host=127.0.0.1 port=5432 user=scoped_ci password=scoped_ci_only dbname=scoped_ci sslmode=disable'
     steps:
       - uses: actions/checkout@v6
