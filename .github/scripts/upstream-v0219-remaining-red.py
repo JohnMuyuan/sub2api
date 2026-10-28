@@ -17,6 +17,10 @@ expected = [
     'TestCountGeminiImageOutputs',
     'TestListPlazaGroups_GroupModelImagePricingWinsOverGroupImageTiers',
     'TestResolveBillableImageCount',
+    'TestCalculateRecordUsageCost_ImageCountBillingGroupTokenPricing',
+    'TestCalculateRecordUsageCost_ImageCountBillingChannelTokenPricing',
+    'TestImageCountBillingPreservesExplicitTokenCardsAcrossGateways',
+    'TestOpenAIUsageDeepSeekPreservesAuthoritativeZeroCacheRead',
     'TestGrokResponseAuditNativeJSON',
     'TestGrokCatalogCASWritesSingleKeyAndReportsRows',
 ]
