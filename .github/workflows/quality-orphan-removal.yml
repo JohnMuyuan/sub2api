@@ -62,7 +62,7 @@ jobs:
           sha256sum -c evidence/test-input.sha256
           (cd backend && go test -tags=integration ./internal/repository -run '^TestQuality(Orphan|Ownership|Isolation|152|LiveDeleteHTTP)' -count=1 -v) 2>&1 | tee evidence/green-storage.log
           if grep -Eq -- '--- SKIP:|no tests to run' evidence/green-storage.log; then exit 1; fi
-          for name in TestQualityOrphanRemovalAtomicScopeContraction TestQualityOrphanRemovalRejectsUnsafeCurrentEntries TestQualityOrphanRemovalRevalidatesFullPreviewAndLease TestQualityOrphanRemovalConcurrentConfirmations TestQualityOrphanHTTPPreviewConfirmReadbackAndSave; do
+          for name in TestQualityOrphanRemovalAtomicScopeContraction TestQualityOrphanRemovalRejectsUnsafeCurrentEntries TestQualityOrphanRemovalRevalidatesFullPreviewAndLease TestQualityOrphanRemovalConcurrentConfirmations TestQualityOrphanRemovalMatchingAndMappedMarkers TestQualityOrphanRule152ModelsAndStaleClaims TestQualityOrphanHTTPPreviewConfirmReadbackAndSave; do
             grep -F -- "--- PASS: $name" evidence/green-storage.log
           done
       - name: Admin authorization and consent boundaries

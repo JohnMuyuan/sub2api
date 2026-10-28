@@ -72,6 +72,13 @@ func TestQualityOrphanRemovalAtomicScopeContraction(t *testing.T) {
 	f := orphanRemovalFixture(t)
 	ctx := context.Background()
 	p := orphanPreview(t, f)
+	for _, entry := range p.Entries {
+		if entry.Model == "sol" {
+			require.Equal(t, "orphan_same_owner", entry.Status)
+			require.Equal(t, "absent", entry.ExpectedOwner)
+			require.Equal(t, "this_rule", entry.CurrentOwner)
+		}
+	}
 	require.True(t, orphanEntry(t, p, "sol").Ready)
 	require.Equal(t, "remove_orphan_marker_only", orphanEntry(t, p, "sol").Effect)
 	require.False(t, orphanEntry(t, p, "astra").Ready)
@@ -162,6 +169,19 @@ func TestQualityOrphanRemovalRejectsUnsafeCurrentEntries(t *testing.T) {
 				f.exec(`UPDATE accounts SET credentials='{"model_mapping":{"astra":"sol"}}' WHERE id=$1`)
 			}
 			p := orphanPreview(t, f)
+			for _, entry := range p.Entries {
+				if entry.Model == "sol" {
+					switch kind {
+					case "other_owner":
+						require.Equal(t, "other_rule", entry.CurrentOwner)
+						require.Equal(t, int64(999), entry.CurrentOwnerRuleID)
+					case "external":
+						require.Equal(t, "external", entry.CurrentOwner)
+					case "no_owner", "null_owner", "malformed":
+						require.Equal(t, "unrecognized", entry.CurrentOwner)
+					}
+				}
+			}
 			require.False(t, orphanEntry(t, p, "sol").Ready)
 			before := orphanSnapshot(t, f)
 			require.Equal(t, "QUALITY_MODEL_REMOVAL_BLOCKED", infraerrors.Reason(orphanConfirm(f, p, "sol")))
@@ -249,4 +269,45 @@ func TestQualityOrphanRemovalMatchingAndMappedMarkers(t *testing.T) {
 			require.Contains(t, f.extra()[service.QualityModelIsolationKey], "astra")
 		})
 	}
+}
+
+// Reproduce the reported model identities with synthetic rule/account IDs. No
+// provider request, production account or copied credential is used by this test.
+func TestQualityOrphanRule152ModelsAndStaleClaims(t *testing.T) {
+	f := orphanRemovalFixture(t)
+	f.exec(`UPDATE accounts SET extra=jsonb_set(extra,'{quality_model_isolation}',jsonb_build_object(
+  'gpt-5.6-sol',extra->'quality_model_isolation'->'sol',
+  'gpt-6-astra',extra->'quality_model_isolation'->'astra'))
+  || '{"model_rate_limits":{"gpt-5.6-sol":{"reason":"native-independent","rate_limit_reset_at":"2099-01-01T00:00:00Z"}},"unrelated_setting":"preserved"}'::jsonb WHERE id=$1`)
+	_, err := integrationDB.Exec(`UPDATE account_quality_states SET state=jsonb_set(jsonb_set(jsonb_set(state,
+  '{isolation_models}','["gpt-6-astra","gpt-6.1-sol","gpt-5.6-sol"]'),
+  '{models,model_applied}',jsonb_build_object('gpt-6-astra',state->'models'->'model_applied'->'astra','gpt-6.1-sol',state->'models'->'model_applied'->'missing')),
+  '{models,model_rate_limits}','{"gpt-6-astra":null,"gpt-6.1-sol":null}') WHERE plan_id=$1`, f.plan.ID)
+	require.NoError(t, err)
+	_, err = integrationDB.Exec(`UPDATE scheduled_test_plans SET model_id='gpt-6-astra',pelican_config=jsonb_set(pelican_config,'{model_ids}','["gpt-6-astra","gpt-6.1-sol","gpt-5.6-sol"]') WHERE id=$1`, f.plan.ID)
+	require.NoError(t, err)
+	ctx := context.Background()
+	old, err := f.plans.GetByID(ctx, f.plan.ID)
+	require.NoError(t, err)
+	p := orphanPreview(t, f)
+	require.True(t, orphanEntry(t, p, "gpt-5.6-sol").Ready)
+	require.Equal(t, "remove_orphan_marker_only", orphanEntry(t, p, "gpt-5.6-sol").Effect)
+	require.Equal(t, "changed_same_owner", orphanEntry(t, p, "gpt-6-astra").BlockedReason)
+	require.True(t, orphanEntry(t, p, "gpt-6.1-sol").Ready)
+	require.NoError(t, orphanConfirm(f, p, "gpt-5.6-sol"))
+	require.NotContains(t, f.extra()[service.QualityModelIsolationKey], "gpt-5.6-sol")
+	require.Contains(t, f.extra()["model_rate_limits"], "gpt-5.6-sol", "native restrictions must survive isolation release")
+	require.Contains(t, f.extra()[service.QualityModelIsolationKey], "gpt-6-astra")
+	// A previously read scheduler candidate cannot claim the old configuration.
+	// Also test an expired worker's outcome under its pre-confirmation version.
+	now := time.Now().Add(time.Second).Truncate(time.Microsecond)
+	claimed, err := f.plans.ClaimPelican(ctx, old, now, now.Add(time.Minute), now.Add(time.Hour))
+	require.NoError(t, err)
+	require.False(t, claimed)
+	fresh, err := f.plans.GetByID(ctx, f.plan.ID)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-6-astra", fresh.ModelID, "an unrelated primary model stays unchanged")
+	require.Equal(t, []string{"gpt-6-astra", "gpt-6.1-sol"}, service.QualityModels(fresh))
+	_, err = f.plans.Update(ctx, fresh)
+	require.NoError(t, err, "the narrowed scope remains editable with managed peers")
 }

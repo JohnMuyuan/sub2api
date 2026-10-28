@@ -307,6 +307,9 @@ func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id i
 		if !seen[model] && (owner == "this_rule" || relevant[model]) {
 			entry := modelOwnershipEntry(model, nil, raw, id)
 			entry.Status = "unrecognized"
+			if owner == "this_rule" {
+				entry.Status = "orphan_same_owner"
+			}
 			entry.CanRelinquish = false
 			view.Entries = append(view.Entries, entry)
 		}

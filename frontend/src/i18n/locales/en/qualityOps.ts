@@ -516,7 +516,7 @@ export default {
   "savedModels": "Currently saved models",
   "nameIsLabel": "The rule name is a display label, not a linked preset",
   "ownershipOwners": {"this_rule": "this rule", "other_rule": "another rule", "external": "external / administrator", "absent": "no live entry", "unrecognized": "unrecognized"},
-  "ownershipStates": {"managed": "matches expected", "missing": "entry missing", "external_owner": "externally owned", "changed_same_owner": "same rule marker, changed content; manual review required", "unrecognized": "unrecognized; retained", "group_missing": "group missing", "external_membership_present": "membership externally recreated"},
+  "ownershipStates": {"orphan_same_owner": "Still owned by this rule with no original snapshot; review targeted removal separately", "managed": "matches expected", "missing": "entry missing", "external_owner": "externally owned", "changed_same_owner": "same rule marker, changed content; manual review required", "unrecognized": "unrecognized; retained", "group_missing": "group missing", "external_membership_present": "membership externally recreated"},
   "modelRemovalTitle": "Release isolation and remove one model",
   "modelRemovalHelp": "Only the selected model and its rule scope change. Other models and groups are retained. Missing snapshots cannot reconstruct old values; only a complete, exclusive marker still owned by this rule can be removed.",
   "modelRemovalReason": "Reason",

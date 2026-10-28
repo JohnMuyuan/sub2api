@@ -516,7 +516,7 @@ export default {
   "savedModels": "当前已保存模型",
   "nameIsLabel": "规则名称是显示标签，不表示绑定的检测模板",
   "ownershipOwners": {"this_rule": "本规则", "other_rule": "其他规则", "external": "外部/管理员", "absent": "无现存项", "unrecognized": "无法确定"},
-  "ownershipStates": {"managed": "匹配原记录", "missing": "限制项已缺失", "external_owner": "现存项已属其他主体", "changed_same_owner": "仍标本规则但内容已变，需人工核对", "unrecognized": "未知记录，保留", "group_missing": "目标组已不存在", "external_membership_present": "组成员已由外部重建"},
+  "ownershipStates": {"orphan_same_owner": "当前仍归本规则但原快照缺失，仅可单独预览定向处理", "managed": "匹配原记录", "missing": "限制项已缺失", "external_owner": "现存项已属其他主体", "changed_same_owner": "仍标本规则但内容已变，需人工核对", "unrecognized": "未知记录，保留", "group_missing": "目标组已不存在", "external_membership_present": "组成员已由外部重建"},
   "modelRemovalTitle": "定向解除隔离并移除一个模型",
   "modelRemovalHelp": "仅修改所选模型并同步缩减规则范围，其他模型和分组保留。缺少原快照时不会恢复或猜测旧值；仅能移除格式完整、独占且仍属本规则的隔离标记。",
   "modelRemovalReason": "操作原因",
