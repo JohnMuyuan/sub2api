@@ -38,17 +38,17 @@
 
 - 分页（已移植，动态验收待远端 CI）：ParsePagination → repository 直接 offset / PaginationParams.Offset → paginateSlice、paginateAPIKeys、mergeBalanceHistoryCodes；prompt audit、ops token stats 独立严格解析。基线存在原生 int 乘法/数字解析回绕；移植饱和边界、strconv 范围检查及相应行为测试，保留 fork 的响应脱敏逻辑。
 - x/net：按任务要求已由 production a0b4c39f2 修复，跳过重复升级。
-- 其余：待逐项树级核对及实现；scoped admin API keys 需完整权限/ownership/鉴权链审查；Grok P2 保留逐项待办。
+- 其余：持续逐项树级核对及实现；scoped admin API keys 需完整权限/ownership/鉴权链审查；Grok P2 保留逐项待办。
 
 ## Leaf 双清单（每项保留来源）
 
 | 原 SHA | 上游主题 | 处理状态 |
 | --- | --- | --- |
 | [5db2d695](https://github.com/Wei-Shaw/sub2api/commit/5db2d6956ba60fb5c9401823561a166d38295095) | fix(billing): retain DeepSeek V4 Pro pricing after September 14 | 待代码链核对 |
-| [de908ed6](https://github.com/Wei-Shaw/sub2api/commit/de908ed6d29339fec04dcd9b39dab95b47a49575) | fix(ratelimit): 国产 Coding Plan 的频率型 429 改用秒级冷却 | 待代码链核对 |
-| [4197fa62](https://github.com/Wei-Shaw/sub2api/commit/4197fa62021ca1fe7933fe3eb08ae119dc1fe91b) | feat(gemini): 同账号重试次数改为可配置 gateway.max_same_account_retries_gemini | 待代码链核对 |
-| [f9652804](https://github.com/Wei-Shaw/sub2api/commit/f9652804894eb150942af2b108bbce670594460c) | fix(pagination): keep page offsets from overflowing int | 已移植 1213442fa；待远端验收 |
-| [9aa16c8c](https://github.com/Wei-Shaw/sub2api/commit/9aa16c8c66326afdd2e1b070e3403ac36e8a7050) | fix(pagination): validate numeric ranges and reuse safe offsets | 已移植 0c3cf0226；待远端验收 |
+| [de908ed6](https://github.com/Wei-Shaw/sub2api/commit/de908ed6d29339fec04dcd9b39dab95b47a49575) | fix(ratelimit): 国产 Coding Plan 的频率型 429 改用秒级冷却 | 已移植 6e7229f8b；待精确 head CI |
+| [4197fa62](https://github.com/Wei-Shaw/sub2api/commit/4197fa62021ca1fe7933fe3eb08ae119dc1fe91b) | feat(gemini): 同账号重试次数改为可配置 gateway.max_same_account_retries_gemini | 已移植 45554fc25；待精确 head CI |
+| [f9652804](https://github.com/Wei-Shaw/sub2api/commit/f9652804894eb150942af2b108bbce670594460c) | fix(pagination): keep page offsets from overflowing int | 已移植 1213442fa；待精确 head CI |
+| [9aa16c8c](https://github.com/Wei-Shaw/sub2api/commit/9aa16c8c66326afdd2e1b070e3403ac36e8a7050) | fix(pagination): validate numeric ranges and reuse safe offsets | 已移植 0c3cf0226；待精确 head CI |
 | [5c185c5c](https://github.com/Wei-Shaw/sub2api/commit/5c185c5c5d4f5e409e2139806e0964ae944e03e8) | chore: sync VERSION to 0.2.18 [skip ci] | 跳过：保留 fork 版本 |
 | [e445cc3e](https://github.com/Wei-Shaw/sub2api/commit/e445cc3e2d9c9f330f2af069d6693bfdeb2245ad) | 新增按操作与资源范围授权的管理员 API 密钥 | 待代码链核对 |
 | [fd998129](https://github.com/Wei-Shaw/sub2api/commit/fd998129ec8375c6623e061c7e5e391752dc954a) | feat(billing): support per-image billing for multi-image requests | 待代码链核对 |
@@ -79,21 +79,21 @@
 | [9534f1c0](https://github.com/Wei-Shaw/sub2api/commit/9534f1c089d67fbfac8784489579791bd50df0e4) | fix(grok): 提高删除图标对比度并补齐同步按钮 Label in Name | 待代码链核对 |
 | [3ce09c8a](https://github.com/Wei-Shaw/sub2api/commit/3ce09c8aff085ce42538d539d515742d8650e6f0) | fix(billing): keep tokens for channel per-request image tiers | 待代码链核对 |
 | [dfc13ce7](https://github.com/Wei-Shaw/sub2api/commit/dfc13ce7f9ff9300c524d21d871f672c91d235c2) | fix(grok): 修复模型目录审计相关 lint 错误 | 待代码链核对 |
-| [cde6ddfd](https://github.com/Wei-Shaw/sub2api/commit/cde6ddfd8f41e1cf173ed83ac42e79f1e8af34c8) | fix(images): reject oversized multipart uploads instead of truncating them | 待代码链核对 |
+| [cde6ddfd](https://github.com/Wei-Shaw/sub2api/commit/cde6ddfd8f41e1cf173ed83ac42e79f1e8af34c8) | fix(images): reject oversized multipart uploads instead of truncating them | 已移植 08ed8f1dd；待精确 head CI |
 | [3e18e78a](https://github.com/Wei-Shaw/sub2api/commit/3e18e78ab1d06d3cce1fc019d8969acceafaaf5e) | fix(usage): DeepSeek prompt_cache_hit_tokens 计为缓存读取 | 待代码链核对 |
-| [88d9c43b](https://github.com/Wei-Shaw/sub2api/commit/88d9c43b3e9a30d9e7f74a369114eff0f5674379) | fix(admin): 管理员保护规则返回 400 而不是 500 | 待代码链核对 |
-| [14a5fe30](https://github.com/Wei-Shaw/sub2api/commit/14a5fe3050616e35b5f123614f57e0e6adcaf069) | fix(antigravity): reject malformed non-streaming tool calls | 待代码链核对 |
+| [88d9c43b](https://github.com/Wei-Shaw/sub2api/commit/88d9c43b3e9a30d9e7f74a369114eff0f5674379) | fix(admin): 管理员保护规则返回 400 而不是 500 | 已移植 d50fcedc7；待精确 head CI |
+| [14a5fe30](https://github.com/Wei-Shaw/sub2api/commit/14a5fe3050616e35b5f123614f57e0e6adcaf069) | fix(antigravity): reject malformed non-streaming tool calls | 已移植 9067ac10e；待精确 head CI |
 | [34236674](https://github.com/Wei-Shaw/sub2api/commit/34236674223877d265bb5dbc071277d04ded0d34) | feat(openai): support GPT-6.1 Terra | 待代码链核对 |
 | [d0afece1](https://github.com/Wei-Shaw/sub2api/commit/d0afece15f9f16da32193816c2cc50dbb04938e5) | fix(model-plaza): prefer group model pricing over image fallback tiers | 待代码链核对 |
-| [a2074123](https://github.com/Wei-Shaw/sub2api/commit/a207412375448f85e816b1b56139813d04d831d8) | fix(gemini): 绑定显式缓存的请求在池模式上游网关账号上按配置同账号重试 | 待代码链核对 |
-| [b2b1bcf2](https://github.com/Wei-Shaw/sub2api/commit/b2b1bcf260b584dc4d268a8ae36bec31a2de2130) | fix(models): 模型列表刷新进入 singleflight 后复查缓存，避免并发冷启动重复请求上游 | 待代码链核对 |
-| [ba5b2187](https://github.com/Wei-Shaw/sub2api/commit/ba5b21879430fdbe3ab87dc791b09bcdece5e4a7) | fix(gateway): 修复 OpenCode 转发 DeepSeek 的角色兼容 | 待代码链核对 |
-| [7bce2cfb](https://github.com/Wei-Shaw/sub2api/commit/7bce2cfb45d8cf6e8ea7f9cf2710c9febb8a2f51) | fix(claude): match JavaScript UTF-16 billing fingerprint semantics | 待代码链核对 |
-| [9eba6173](https://github.com/Wei-Shaw/sub2api/commit/9eba617367469e3e37fa4aa131275499ea2f8c14) | fix(channels): preserve web_search_emulation platform dimensions on update | 待代码链核对 |
-| [1352e899](https://github.com/Wei-Shaw/sub2api/commit/1352e899ecd418ecf0b81a5151a9c992c953d945) | test(channels): use checked type assertions in web search merge tests | 待代码链核对 |
+| [a2074123](https://github.com/Wei-Shaw/sub2api/commit/a207412375448f85e816b1b56139813d04d831d8) | fix(gemini): 绑定显式缓存的请求在池模式上游网关账号上按配置同账号重试 | 已移植 c8b77507a；待精确 head CI |
+| [b2b1bcf2](https://github.com/Wei-Shaw/sub2api/commit/b2b1bcf260b584dc4d268a8ae36bec31a2de2130) | fix(models): 模型列表刷新进入 singleflight 后复查缓存，避免并发冷启动重复请求上游 | 已移植 9a574f65a；待精确 head CI |
+| [ba5b2187](https://github.com/Wei-Shaw/sub2api/commit/ba5b21879430fdbe3ab87dc791b09bcdece5e4a7) | fix(gateway): 修复 OpenCode 转发 DeepSeek 的角色兼容 | 已移植 a36876ccb；待精确 head CI |
+| [7bce2cfb](https://github.com/Wei-Shaw/sub2api/commit/7bce2cfb45d8cf6e8ea7f9cf2710c9febb8a2f51) | fix(claude): match JavaScript UTF-16 billing fingerprint semantics | 已移植 a06eaaffb；待精确 head CI |
+| [9eba6173](https://github.com/Wei-Shaw/sub2api/commit/9eba617367469e3e37fa4aa131275499ea2f8c14) | fix(channels): preserve web_search_emulation platform dimensions on update | 已移植 69ae1f904；待精确 head CI |
+| [1352e899](https://github.com/Wei-Shaw/sub2api/commit/1352e899ecd418ecf0b81a5151a9c992c953d945) | test(channels): use checked type assertions in web search merge tests | 已移植 89a861867；待精确 head CI |
 | [0a2a29b3](https://github.com/Wei-Shaw/sub2api/commit/0a2a29b32e6724714c69822296ccd05a6b86bfdd) | chore(deps): bump golang.org/x/net to v0.62.0 (GO-2026-6860) | 已等价修复，跳过 |
-| [de44e3a0](https://github.com/Wei-Shaw/sub2api/commit/de44e3a0bfd63db10fc733a71d6577f5070a6b8e) | fix(gemini): 分组账号都声明模型映射时，/v1beta/models 列表与详情按声明的模型应答 | 待代码链核对 |
-| [31564b2e](https://github.com/Wei-Shaw/sub2api/commit/31564b2e86ccb6f4de348a21eb9e47b366f326ba) | fix(gemini): 刷新 Gemini 默认模型列表，移除已停用的 2.x 模型 | 待代码链核对 |
+| [de44e3a0](https://github.com/Wei-Shaw/sub2api/commit/de44e3a0bfd63db10fc733a71d6577f5070a6b8e) | fix(gemini): 分组账号都声明模型映射时，/v1beta/models 列表与详情按声明的模型应答 | 已移植 6da45b7e2；待精确 head CI |
+| [31564b2e](https://github.com/Wei-Shaw/sub2api/commit/31564b2e86ccb6f4de348a21eb9e47b366f326ba) | fix(gemini): 刷新 Gemini 默认模型列表，移除已停用的 2.x 模型 | 已移植 dc9a24014；待精确 head CI |
 
 ## 验证与限制
 
