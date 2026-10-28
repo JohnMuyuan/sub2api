@@ -30,7 +30,7 @@ export function qualityBPSForm(saved?: Partial<QualityBPSPolicy> | null): Qualit
 // Copy reusable inputs only. Result snapshots and future server-only fields must
 // never enter a create request through a spread of the source configuration.
 export function copyQualityRuleConfig(source: PelicanTestConfig): PelicanTestConfig & { quality: QualityPolicy } {
-  const policy = source.quality || { action: 'observe_only', expected_answer: '', remove_group_ids: [], auto_restore: false }
+  const policy: QualityPolicy = source.quality || { action: 'observe_only', expected_answer: '', remove_group_ids: [], auto_restore: false }
   if (policy.action === 'openai_two_fa_admission') throw new Error('qualityOps.copyUnsupported')
   const action = policy.action || 'observe_only'
   const bps = action === 'enable_bps' ? policy.bps : undefined
