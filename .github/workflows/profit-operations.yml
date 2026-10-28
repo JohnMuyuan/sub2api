@@ -6,7 +6,7 @@ on:
       - '**/ProfitOperations*'
       - '**/UpstreamChannelOperations*'
       - '**/ProfitAnalytics*'
-      - '.github/workflows/upstream-profit-operations.yml'
+      - '.github/workflows/profit-operations.yml'
       - '.github/scripts/upstream-profit-operations-screenshot.mjs'
       - 'frontend/src/api/admin/profitOperations.ts'
       - 'frontend/src/i18n/locales/*/profitOps.ts'
@@ -28,6 +28,29 @@ jobs:
       - run: git rev-parse HEAD
       - run: go test -tags=unit ./internal/service ./internal/handler/admin ./internal/server/routes -run '^TestProfitOperations' -count=1 -v
         working-directory: backend
+      - name: Standard charge cost formula RED against account-statistics substitution
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=internal/repository/profit_operations.go
+          cp "$target" "$RUNNER_TEMP/current-profit.go"
+          trap 'cp "$RUNNER_TEMP/current-profit.go" "$target"' EXIT
+          python3 - <<'PYRED'
+          from pathlib import Path
+          p=Path('internal/repository/profit_operations.go')
+          s=p.read_text()
+          assert 'u.total_cost AS cost_base' in s
+          p.write_text(s.replace('u.total_cost AS cost_base','COALESCE(u.account_stats_cost,u.total_cost) AS cost_base'))
+          PYRED
+          set +e
+          go test -tags=integration ./internal/repository -run '^TestProfitOperationsHTTPPostgresWithoutModelChannelBinding$' -count=1 -v > "$RUNNER_TEMP/profit-cost-red.log" 2>&1
+          result=$?
+          set -e
+          cat "$RUNNER_TEMP/profit-cost-red.log"
+          test "$result" -ne 0
+          grep -q 'FAIL: TestProfitOperationsHTTPPostgresWithoutModelChannelBinding' "$RUNNER_TEMP/profit-cost-red.log"
+          grep -q 'standard model charge base, not account statistics override' "$RUNNER_TEMP/profit-cost-red.log"
       - run: go test -tags=integration ./internal/repository -run '^TestProfitOperations' -count=1 -v
         working-directory: backend
   frontend:
@@ -53,7 +76,7 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/upstream-browser" --no-save --ignore-scripts playwright@1.56.1
           "$RUNNER_TEMP/upstream-browser/node_modules/.bin/playwright" install --with-deps chromium
-      - name: Two real pages with synthetic data and zero live requests
+      - name: Independent profit page with synthetic data and zero live requests
         env:
           PLAYWRIGHT_ROOT: ${{ runner.temp }}/upstream-browser/node_modules/playwright
           UPSTREAM_SCREENSHOT_DIR: ${{ runner.temp }}/upstream-screenshots

@@ -18,7 +18,11 @@ func profitOperationsAccounts(ctx context.Context, tx *sql.Tx, f service.Upstrea
 	if err != nil {
 		return nil, err
 	}
-	var accounts []map[string]any
+	var accounts []struct {
+		operationsAccount
+		Multiplier *float64 `json:"multiplier"`
+		CostBasis  string   `json:"cost_basis"`
+	}
 	if err = json.Unmarshal(raw, &accounts); err != nil {
 		return nil, err
 	}
@@ -45,11 +49,12 @@ func profitOperationsAccounts(ctx context.Context, tx *sql.Tx, f service.Upstrea
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	for _, a := range accounts {
-		id := int64(a["id"].(float64))
+	for i := range accounts {
+		a := &accounts[i]
+		id := a.ID
 		v, basis := service.OperationsCostMultiplier(&service.Account{Extra: map[string]any{"cost_multiplier": costs[id]}})
-		a["multiplier"] = v
-		a["cost_basis"] = basis
+		a.Multiplier = v
+		a.CostBasis = basis
 	}
 	return json.Marshal(accounts)
 }
@@ -105,7 +110,7 @@ const profitOperationsAggregate = `count(*) AS requests,
  max(created_at) AS latest_sample_at,min(config_updated_at) AS oldest_config_updated_at,max(config_updated_at) AS latest_config_updated_at,
  jsonb_agg(DISTINCT cost_basis) AS cost_bases`
 
-func (r *channelRepository) ReadProfitOperations(ctx context.Context, f service.UpstreamOperationsFilter) (*service.UpstreamOperationsSnapshot, error) {
+func (r *channelRepository) ReadProfitOperations(ctx context.Context, f service.UpstreamOperationsFilter) (*service.ProfitOperationsSnapshot, error) {
 	if err := service.ValidateProfitOperationsFilter(f); err != nil {
 		return nil, err
 	}
@@ -144,7 +149,7 @@ func (r *channelRepository) ReadProfitOperations(ctx context.Context, f service.
  'income_source','persisted usage_logs.actual_cost; subscription usage valuation, not cash receipts; no guarantee of debit in simple mode',
  'standard_source','persisted usage_logs.total_cost; historical model/cache/per-request pricing is not recalculated',
  'account_rate_multiplier_used',false,'error_rate',NULL)`
-	out := &service.UpstreamOperationsSnapshot{Scope: f, QueriedAt: time.Now().UTC(), Attribution: "current_account_config_estimate_no_historical_url_or_procurement_multiplier_snapshot"}
+	out := &service.ProfitOperationsSnapshot{UpstreamOperationsSnapshot: service.UpstreamOperationsSnapshot{Scope: f, QueriedAt: time.Now().UTC(), Attribution: "current_account_config_estimate_no_historical_url_or_procurement_multiplier_snapshot"}, Currency: "USD billing units (no per-row currency snapshot)"}
 	if err = tx.QueryRowContext(ctx, query, args...).Scan(&out.Usage); err != nil {
 		return nil, fmt.Errorf("read upstream usage: %w", err)
 	}
@@ -169,25 +174,6 @@ func (r *channelRepository) ReadProfitOperations(ctx context.Context, f service.
 		return nil, err
 	}
 	return out, nil
-}
-
-func readUpstreamSection(ctx context.Context, tx *sql.Tx, query string, args ...any) service.ChannelOperationsSection {
-	out := service.ChannelOperationsSection{Status: "query_failed", Data: json.RawMessage("null"), QueriedAt: time.Now().UTC(), Error: "Data query failed; retry"}
-	if _, err := tx.ExecContext(ctx, "SAVEPOINT operations_section"); err != nil {
-		return out
-	}
-	var raw []byte
-	if err := tx.QueryRowContext(ctx, query, args...).Scan(&raw); err != nil {
-		_, _ = tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT operations_section")
-		return out
-	}
-	if _, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT operations_section"); err != nil {
-		return out
-	}
-	out.Status = "ready"
-	out.Error = ""
-	out.Data = raw
-	return out
 }
 
 var _ service.ProfitOperationsRepository = (*channelRepository)(nil)

@@ -55,7 +55,7 @@ func TestProfitOperationsHTTPPostgresWithoutModelChannelBinding(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		require.Equal(t, 1, body.Data.Usage.Summary.Requests)
-		require.Equal(t, 1.5, body.Data.Usage.Summary.Profit)
+		require.Equal(t, 1.5, body.Data.Usage.Summary.Profit, "standard model charge base, not account statistics override")
 		require.Len(t, body.Data.Usage.Rows, 1)
 		require.Equal(t, "https://http.example:8443/tenant/v1", body.Data.Usage.Rows[0].Key)
 		require.Contains(t, body.Data.Attribution, "estimate")
