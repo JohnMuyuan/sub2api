@@ -239,3 +239,73 @@ func TestImageCountBillingUsesFallbackWithoutOperatorTokenCard(t *testing.T) {
 	require.InDelta(t, 1.2, cost.TotalCost, 1e-12)
 	require.Equal(t, string(BillingModeImage), cost.BillingMode)
 }
+
+// Both APIs must retain operator token-card priority for dedicated and mixed
+// requests. Fixed expected costs make changing only the routing branch observable.
+func TestImageCountBillingPreservesExplicitTokenCardsAcrossGateways(t *testing.T) {
+	for _, source := range []PricingSource{PricingSourceGroup, PricingSourceChannel} {
+		for _, imageEndpoint := range []bool{false, true} {
+			groupID := int64(907)
+			model := "gpt-image-2"
+			resolver := newOpenAITokenImageChannelPricingResolverForTest(t, groupID, model)
+			group := &Group{ID: groupID, Platform: PlatformOpenAI, Hydrated: true, Status: StatusActive,
+				AllowImageGeneration: true, ImageCountBilling: true, ImagePrice1K: f64p(0.4)}
+			want := 0.00045 // 100 * $3/MTok + 10 * $15/MTok
+			if source == PricingSourceGroup {
+				group.ModelPricing = []ChannelModelPricing{{Models: []string{model}, BillingMode: BillingModeToken,
+					InputPrice: f64p(7e-6), OutputPrice: f64p(11e-6)}}
+				want = 0.00081 // group card beats both channel card and count fallback
+			}
+			key := &APIKey{GroupID: &groupID, Group: group}
+			claude := &GatewayService{billingService: resolver.billingService, resolver: resolver}
+			cost := claude.calculateRecordUsageCost(context.Background(), &ForwardResult{
+				Model: model, ImageCount: 3, ImageSize: "1K", ImageEndpoint: imageEndpoint,
+				Usage: ClaudeUsage{InputTokens: 100, OutputTokens: 10},
+			}, key, model, 1, 1, time.Time{})
+			require.Equal(t, string(BillingModeToken), cost.BillingMode)
+			require.InDelta(t, want, cost.TotalCost, 1e-12)
+			openai := &OpenAIGatewayService{billingService: resolver.billingService, resolver: resolver}
+			cost, err := openai.calculateOpenAIRecordUsageCost(context.Background(), &OpenAIForwardResult{
+				Model: model, ImageCount: 3, ImageSize: "1K", ImageEndpoint: imageEndpoint,
+			}, key, []string{model}, 1, 1, 1, 1,
+				UsageTokens{InputTokens: 100, OutputTokens: 10}, "", nil, false, time.Time{})
+			require.NoError(t, err)
+			require.Equal(t, string(BillingModeToken), cost.BillingMode)
+			require.InDelta(t, want, cost.TotalCost, 1e-12)
+		}
+	}
+}
+
+func TestImageCountBillingPreservesExplicitTokenCardsAcrossGateways(t *testing.T) {
+	for _, source := range []string{PricingSourceGroup, PricingSourceChannel} {
+		for _, imageEndpoint := range []bool{false, true} {
+			groupID := int64(907)
+			model := "gpt-image-2"
+			resolver := newOpenAITokenImageChannelPricingResolverForTest(t, groupID, model)
+			group := &Group{ID: groupID, Platform: PlatformOpenAI, Hydrated: true, Status: StatusActive,
+				AllowImageGeneration: true, ImageCountBilling: true, ImagePrice1K: f64p(0.4)}
+			want := 0.00045
+			if source == PricingSourceGroup {
+				group.ModelPricing = []ChannelModelPricing{{Models: []string{model}, BillingMode: BillingModeToken,
+					InputPrice: f64p(7e-6), OutputPrice: f64p(11e-6)}}
+				want = 0.00081
+			}
+			key := &APIKey{GroupID: &groupID, Group: group}
+			claude := &GatewayService{billingService: resolver.billingService, resolver: resolver}
+			cost := claude.calculateRecordUsageCost(context.Background(), &ForwardResult{
+				Model: model, ImageCount: 3, ImageSize: "1K", ImageEndpoint: imageEndpoint,
+				Usage: ClaudeUsage{InputTokens: 100, OutputTokens: 10},
+			}, key, model, 1, 1, time.Time{})
+			require.Equal(t, string(BillingModeToken), cost.BillingMode)
+			require.InDelta(t, want, cost.TotalCost, 1e-12)
+			openai := &OpenAIGatewayService{billingService: resolver.billingService, resolver: resolver}
+			cost, err := openai.calculateOpenAIRecordUsageCost(context.Background(), &OpenAIForwardResult{
+				Model: model, ImageCount: 3, ImageSize: "1K", ImageEndpoint: imageEndpoint,
+			}, key, []string{model}, 1, 1, 1, 1,
+				UsageTokens{InputTokens: 100, OutputTokens: 10}, "", nil, false, time.Time{})
+			require.NoError(t, err)
+			require.Equal(t, string(BillingModeToken), cost.BillingMode)
+			require.InDelta(t, want, cost.TotalCost, 1e-12)
+		}
+	}
+}
