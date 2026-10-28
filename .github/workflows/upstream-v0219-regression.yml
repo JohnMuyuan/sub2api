@@ -67,15 +67,22 @@ jobs:
           set -euo pipefail
           go test -tags=unit ./internal/config ./internal/pkg/pagination ./internal/pkg/response ./internal/pkg/antigravity ./internal/pkg/gemini ./internal/pkg/geminicli ./internal/pkg/adminaccess ./internal/repository ./internal/securityaudit ./internal/handler ./internal/handler/admin ./internal/server/middleware ./internal/server/routes ./internal/service -run 'Test(Pagination|ParsePagination|_parseInt|Paginate|MergeBalanceHistoryCodesLargePage|ParseOpsOpenAITokenStatsFilter|PromptAdminRejects|HandleUpstreamError_Zhipu|CNProviderResponseIndicatesFrequencyLimit|CNProviderQuotaSnapshotNearExhausted|AdminService_UpdateUser_AdminGuards|AdminService_DeleteUser_AdminGuard|ParseOpenAIImagesRequest_Multipart|ParseGrokMediaRequest_Multipart|MalformedFunctionCallTransform|AntigravityMalformedFunctionCall|ForwardAsChatCompletions_StrictDeveloperRole|NormalizeStrictChatDeveloperRoles|ClaudeCodeFingerprint|SyncBillingHeaderVersion|BuildOAuthRequest_Billing|MergeWebSearchEmulation|ChannelService_ApplyUpdateInput|OpenAIModelsSingleflight|LoadGeminiSameAccountRetries|Gemini.*(Retry|Retries|BoundCache|Declared|NativeModels|DefaultTestModel)|GatewayModels_Gemini|DefaultModels|Scoped|Custom|LegacyAdmin|AdminAccess|PanelRate|OpenAIStreamReplayBoundary|GeminiCachedContentMutationRecovery|.*Models.*Admission|APIKeyAdmissionModels|FetchCodexModelsManifestAPIKeySharedRefreshSurvivesCallerCancellation|Observer|EnforceStepUp)' -count=1 -v | tee "$RUNNER_TEMP/upstream-v0219-green.log"
           ! grep -E -- '--- SKIP: TestScoped|--- SKIP: TestCustom' "$RUNNER_TEMP/upstream-v0219-green.log"
+      - name: Fixed-tag pricing and Grok behavior RED
+        run: python3 .github/scripts/upstream-v0219-remaining-red.py
       - name: Fixed-tag pricing and usage regressions
         working-directory: backend
-        run: go test -tags=unit ./internal/pkg/openai ./internal/pkg/apicompat ./internal/service -run 'Test.*(Deepseek|DeepSeek|GPT61Terra|GeminiImage|Gemini.*Image|CountGemini|ModelPricingCatalog|ModelPlaza|PlazaGroups|IsImageGenerationModel|Image.*Pricing|Pricing.*Image)' -count=1 -v
+        run: go test -tags=unit ./internal/pkg/openai ./internal/pkg/apicompat ./internal/service -run 'Test.*(Deepseek|DeepSeek|GPT61Terra|GeminiImage|Gemini.*Image|CountGemini|ModelPricingCatalog|ModelPlaza|PlazaGroups|IsImageGenerationModel|Image.*Pricing|Pricing.*Image|ImageCountBilling|BillableImage|CountOpenAIImage|ChannelPerRequestContextTier)' -count=1 -v
+      - name: Grok catalog audit and ownership regressions
+        working-directory: backend
+        run: |
+          go test -tags=unit ./internal/service ./internal/repository ./internal/handler/admin ./internal/handler/dto ./internal/server -run 'Test.*(Grok|ImageCountBilling|ImageCount|AvailableGroups|Group.*Duplicate|AuthCache.*|LockAndMergeAccountProbeExtra)' -count=1 -v
+          go test -tags=integration ./internal/repository -run '^TestGrok' -count=1 -v
       - name: Preserve exact model-index plans across repeated integration fixtures
         working-directory: backend
         run: go test -tags=integration ./internal/repository -run '^TestUsageLog_UpstreamModelMismatchFilterAndPartialIndex$' -count=10 -v
       - name: Ownership and cancellation race regressions
         working-directory: backend
-        run: go test -race -tags=unit ./internal/service ./internal/server/middleware -run 'TestOpenAIModelsSingleflight|TestScopedAdmin|TestPanelRate|TestAPIKeyAdmissionModels|TestFetchCodexModelsManifestAPIKeySharedRefreshSurvivesCallerCancellation' -count=1
+        run: go test -race -tags=unit ./internal/service ./internal/server/middleware -run 'TestOpenAIModelsSingleflight|TestScopedAdmin|TestPanelRate|TestAPIKeyAdmissionModels|TestFetchCodexModelsManifestAPIKeySharedRefreshSurvivesCallerCancellation|TestGrokCatalogPersistConcurrentWritersAreRaceSafe|TestGrokCatalog' -count=1
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
@@ -86,4 +93,4 @@ jobs:
         working-directory: frontend
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec vitest run src/components/admin/settings/__tests__/AdminAccessKeysSettings.spec.ts src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts src/composables/__tests__/useModelWhitelist.spec.ts
+          pnpm exec vitest run src/components/admin/settings/__tests__/AdminAccessKeysSettings.spec.ts src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts src/composables/__tests__/useModelWhitelist.spec.ts src/api/__tests__/admin.accounts.grokModelDiagnostics.spec.ts src/components/account/__tests__/GrokModelDiagnosticsPanel.spec.ts src/components/account/__tests__/EditAccountModal.grokUpstream.spec.ts src/components/account/__tests__/ModelWhitelistSelector.spec.ts src/components/keys/__tests__/UseKeyModal.spec.ts
