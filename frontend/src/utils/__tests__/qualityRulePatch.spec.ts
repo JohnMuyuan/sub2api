@@ -291,6 +291,11 @@ describe('complete template selected fields', () => {
     expect(triggered.pelican_config!.quality!.action).toBe(plan().pelican_config!.quality!.action)
     expect(triggered).not.toHaveProperty('max_results')
   })
+  it('rejects retention too small for the targets existing samples when only retention is selected', () => {
+    const target = plan(); target.pelican_config!.model_ids = ['first', 'second']; target.pelican_config!.parallel_count = 3
+    expect(() => buildQualityRulePatch(target, { ...draft(), max_results: 5 }, ['retention'])).toThrow('qualityOps.retentionTooSmall')
+    expect(buildQualityRulePatch(target, { ...draft(), max_results: 6 }, ['retention'])).toEqual({ max_results: 6 })
+  })
   it('never inherits a punitive action for old presets and removes hidden restrictions', () => {
     const source = draft().pelican_config
     delete (source.quality as any).action
