@@ -1005,6 +1005,7 @@ func registerPluginRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAut
 }
 
 func registerChannelRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	admin.GET("/upstream-operations/snapshot", h.Admin.Channel.UpstreamOperations)
 	channels := admin.Group("/channels")
 	{
 		channels.GET("", h.Admin.Channel.List)
