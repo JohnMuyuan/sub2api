@@ -83,7 +83,7 @@ func qualityModelRemovals(plan *service.ScheduledTestPlan, account *service.Acco
 				block("shared_mapping")
 			}
 		}
-		if len(models) < 2 {
+		if !slices.ContainsFunc(models, func(peer string) bool { return peer != model }) {
 			block("last_model")
 		}
 		if state.Action != service.QualityActionIsolateModels || checkQualityIsolationScope(plan, state) != nil {
@@ -116,6 +116,9 @@ func removeQualityOwnedModel(ctx context.Context, tx *sql.Tx, plan *service.Sche
 		return nil, infraerrors.Conflict("QUALITY_MODEL_REMOVAL_BLOCKED", "model removal is blocked; review the current preview")
 	}
 	models := slices.DeleteFunc(slices.Clone(service.QualityModels(plan)), func(model string) bool { return model == request.Model })
+	if len(models) == 0 {
+		return nil, infraerrors.Conflict("QUALITY_MODEL_REMOVAL_BLOCKED", "at least one tested model must remain")
+	}
 	encoded, _ := json.Marshal(models)
 	// Patch JSON in place: preserve every unrelated field, counter and snapshot.
 	if len(rawState) == 0 || state.Action != service.QualityActionIsolateModels {

@@ -145,6 +145,6 @@ describe('targeted orphan model removal', () => {
     await wrapper.get('[data-testid="quality-removal-confirm"]').setValue(true)
     await wrapper.get('[data-testid="quality-remove-model"]').trigger('click'); await flushPromises()
     expect(wrapper.emitted('modelRemoved')).toBeUndefined()
-    expect(wrapper.text()).toContain('qualityOps.ownershipLoadFailed'); wrapper.unmount()
+    expect(wrapper.text()).toContain('qualityOps.modelRemovalReadbackFailed'); expect(wrapper.text()).not.toContain('qualityOps.ownershipLoadFailed'); wrapper.unmount()
   })
 })
