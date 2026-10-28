@@ -300,7 +300,7 @@ func TestQualityOrphanRule152ModelsAndStaleClaims(t *testing.T) {
 	require.Contains(t, f.extra()[service.QualityModelIsolationKey], "gpt-6-astra")
 	// A previously read scheduler candidate cannot claim the old configuration.
 	// Also test an expired worker's outcome under its pre-confirmation version.
-	now := time.Now().Add(time.Second).Truncate(time.Microsecond)
+	now := old.NextRunAt.Add(time.Second).Truncate(time.Microsecond)
 	claimed, err := f.plans.ClaimPelican(ctx, old, now, now.Add(time.Minute), now.Add(time.Hour))
 	require.NoError(t, err)
 	require.False(t, claimed)
@@ -308,6 +308,9 @@ func TestQualityOrphanRule152ModelsAndStaleClaims(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "gpt-6-astra", fresh.ModelID, "an unrelated primary model stays unchanged")
 	require.Equal(t, []string{"gpt-6-astra", "gpt-6.1-sol"}, service.QualityModels(fresh))
+	claimed, err = f.plans.ClaimPelican(ctx, fresh, now, now.Add(time.Minute), now.Add(time.Hour))
+	require.NoError(t, err)
+	require.True(t, claimed, "at the same due time the fresh version can claim")
 	_, err = f.plans.Update(ctx, fresh)
 	require.NoError(t, err, "the narrowed scope remains editable with managed peers")
 }

@@ -431,7 +431,7 @@ func (r *scheduledTestPlanRepository) QualityOwnership(ctx context.Context, id i
 	}
 
 	for _, entry := range view.Entries {
-		if entry.Status == "unrecognized" {
+		if entry.Status == "unrecognized" || entry.Status == "orphan_same_owner" {
 			return nil, infraerrors.Conflict("QUALITY_OWNERSHIP_UNSUPPORTED_STATE", "retain unrecognized ownership for review")
 		}
 	}
