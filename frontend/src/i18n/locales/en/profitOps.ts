@@ -46,7 +46,7 @@ export default {
   "savedMultiplier": "Current saved multiplier",
   "defaultMultiplier": "Default 0.1 estimates",
   "savedBase": "Saved account stats base (diagnostic only)",
-  "fallbackBase": "Saved standard base fallback",
+  "fallbackBase": "No account stats override (standard base still used)",
   "subscription": "Subscription valuations",
   "deleted": "Soft-deleted account records",
   "configUpdated": "Current account configuration updated (not a dedicated multiplier timestamp)",

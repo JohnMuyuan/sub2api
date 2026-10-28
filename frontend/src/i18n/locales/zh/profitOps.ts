@@ -46,7 +46,7 @@ export default {
   "savedMultiplier": "当前已保存倍率",
   "defaultMultiplier": "默认 0.1 估算",
   "savedBase": "历史账号统计基数（诊断，不用于成本）",
-  "fallbackBase": "历史标准基数回退",
+  "fallbackBase": "无账号统计覆盖（仍用标准基数）",
   "subscription": "订阅计价记录",
   "deleted": "已软删账号记录",
   "configUpdated": "当前账号配置更新时间（不是倍率专属时间）",
