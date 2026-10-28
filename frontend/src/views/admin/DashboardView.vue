@@ -433,6 +433,7 @@ const granularity = ref<'day' | 'hour'>('hour')
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start)
 const endDate = ref(defaultRange.end)
+const appliedPreset = ref<string | null>('last24Hours')
 
 // Granularity options for Select component
 const granularityOptions = computed(() => [
@@ -635,6 +636,8 @@ const onDateRangeChange = (range: {
   endDate: string
   preset: string | null
 }) => {
+  appliedPreset.value = range.preset
+
   // Auto-select granularity based on date range
   const start = new Date(range.startDate)
   const end = new Date(range.endDate)
@@ -748,6 +751,12 @@ const loadUserSpendingRanking = async () => {
 }
 
 const loadDashboardStats = async () => {
+  if (appliedPreset.value === 'last24Hours') {
+    const range = getLast24HoursRangeDates()
+    startDate.value = range.start
+    endDate.value = range.end
+  }
+
   await Promise.all([
     loadDashboardSnapshot(true),
     loadUsersTrend(),
