@@ -182,3 +182,47 @@ func TestProfitOperationsSameURLWeightedMarginWithoutGroupJoinDuplication(t *tes
 	require.NoError(t, json.Unmarshal(out.Usage, &data))
 	require.Equal(t, 1, data.Total, "same effective URL groups independent accounts once")
 }
+
+func TestProfitOperationsHalfOpenPagingGroupsAndPathIsolation(t *testing.T) {
+	f := newChannelOperationsFixture(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	from := now.Add(-24 * time.Hour)
+	for _, a := range []struct {
+		id   int64
+		base string
+	}{{f.account, "https://same.example:8443/A/v1/"}, {f.outsider, "https://same.example:8443/B/v1/"}} {
+		_, err := integrationDB.Exec(`UPDATE accounts SET type='apikey',credentials=jsonb_build_object('base_url',$2::text),extra='{"cost_multiplier":0}' WHERE id=$1`, a.id, a.base)
+		require.NoError(t, err)
+		for i, at := range []time.Time{from, now, from.Add(-time.Microsecond)} {
+			_, err = integrationDB.Exec(`INSERT INTO usage_logs(user_id,api_key_id,account_id,request_id,model,total_cost,actual_cost,group_id,created_at) VALUES($1,$2,$3,$4,'per-request',2,1,$5,$6)`, f.user, f.key, a.id, fmt.Sprintf("range-%d-%d", a.id, i), f.group, at)
+			require.NoError(t, err)
+		}
+	}
+	q := service.UpstreamOperationsFilter{From: from, Until: now, GroupID: f.group, Dimension: "upstream", ModelScope: "public", Sort: "name", Direction: "asc", Page: 1, PageSize: 1}
+	read := func() map[string]any {
+		out, err := f.repo.ReadProfitOperations(context.Background(), q)
+		require.NoError(t, err)
+		var data map[string]any
+		require.NoError(t, json.Unmarshal(out.Usage, &data))
+		require.Equal(t, "ready", out.Errors.Status)
+		if q.Model != "" && q.ModelScope != "upstream" {
+			require.Equal(t, "unsupported_scope", out.Quality.Status)
+		} else {
+			require.Equal(t, "ready", out.Quality.Status)
+		}
+		return data
+	}
+	first := read()
+	require.Equal(t, 2.0, first["total"])
+	require.Equal(t, 2.0, first["summary"].(map[string]any)["requests"])
+	require.Len(t, first["rows"], 1)
+	require.Equal(t, "https://same.example:8443/A/v1", first["rows"].([]any)[0].(map[string]any)["key"])
+	require.Equal(t, 1.0, first["summary"].(map[string]any)["margin"], "zero procurement cost remains an explicit 100 percent margin")
+	q.Page = 2
+	second := read()
+	require.Equal(t, first["summary"], second["summary"])
+	require.Equal(t, "https://same.example:8443/B/v1", second["rows"].([]any)[0].(map[string]any)["key"])
+	q.Model = "nonexistent"
+	empty := read()
+	require.Equal(t, 0.0, empty["summary"].(map[string]any)["requests"])
+}
