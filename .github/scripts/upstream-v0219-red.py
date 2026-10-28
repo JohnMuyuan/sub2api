@@ -16,8 +16,8 @@ mutated = [
     'backend/internal/pkg/antigravity/response_transformer.go',
     'backend/internal/service/antigravity_gateway_streaming.go',
     'backend/internal/service/gemini_messages_compat_service.go',
+    'backend/internal/pkg/adminaccess/catalog.go',
     'backend/internal/service/ratelimit_cn_providers.go',
-    'backend/internal/service/image_billing_count.go',
 ]
 expected = [
     'TestAdminService_UpdateUser_AdminGuardsAreClientErrors',
@@ -30,7 +30,7 @@ expected = [
     'TestChannelService_ApplyUpdateInputMergesWebSearchEmulationDimensions',
     'TestMalformedFunctionCallTransform',
     'TestAntigravityMalformedFunctionCallNonStreaming',
-    'TestResolveBillableImageCount',
+    'TestScopedAdminRegisteredRoutesEnforceDefaultDenyAndAccountScope',
     'TestHandleUpstreamError_ZhipuFrequency429UsesShortCooldown',
     'TestGeminiForward_SameAccountRetriesFollowConfig',
     'TestGeminiForwardNative_BoundCacheUpstreamGatewayErrorsRetryablePerPoolModeCodes',
@@ -51,10 +51,10 @@ try:
     replace(mutated[2], 'if extractGeminiFinishReason(parsed) == "MALFORMED_FUNCTION_CALL" {', 'if false {')
     replace(mutated[3], 'return s.cfg.Gateway.MaxSameAccountRetriesGemini + 1', 'return geminiDefaultSameAccountRetries + 1')
     replace(mutated[3], 'retryable := account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)', 'retryable := false && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)')
-    replace(mutated[4], 'cnProviderResponseIndicatesFrequencyLimit(responseBody) &&', 'false && cnProviderResponseIndicatesFrequencyLimit(responseBody) &&')
-    replace(mutated[5], 'if fallbackToOne {', 'if false && fallbackToOne {')
+    replace(mutated[5], 'cnProviderResponseIndicatesFrequencyLimit(responseBody) &&', 'false && cnProviderResponseIndicatesFrequencyLimit(responseBody) &&')
+    replace(mutated[4], '\n\treturn false\n}', '\n\treturn true // mutation: unknown routes incorrectly inherit access\n}')
     result = subprocess.run([
-        'go', 'test', '-tags=unit', './internal/service', './internal/pkg/antigravity',
+        'go', 'test', '-tags=unit', './internal/service', './internal/pkg/antigravity', './internal/server/routes',
         '-run', '^(' + '|'.join(expected) + ')$', '-count=1', '-v',
     ], cwd='backend', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     print(result.stdout)
