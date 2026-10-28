@@ -183,7 +183,7 @@ func TestPriorityLatencyAvailabilityEligibilityAndScope(t *testing.T) {
 			require.Contains(t, []int64{1, 2}, selected.Account.ID)
 		})
 	}
-	svc, scheduler, req := availabilityFixture(t, 16000, 17000, 18000)
+	_, scheduler, req := availabilityFixture(t, 16000, 17000, 18000)
 	selected, err := modeSelect(t, scheduler, req)
 	require.NoError(t, err)
 	require.NotNil(t, selected)
@@ -194,4 +194,118 @@ func TestPriorityLatencyAvailabilityEligibilityAndScope(t *testing.T) {
 	require.Nil(t, selected)
 	require.Error(t, err, "fallback must not import accounts across groups")
 	require.False(t, errors.Is(err, context.Canceled))
+}
+
+func TestPriorityLatencyAvailabilityFrozenScope(t *testing.T) {
+	svc, scheduler, req := availabilityFixture(t, 16000, 17000, 18000, 19000, 20000, 21000)
+	req.SessionHash = "mode-sticky"
+	req.StickyAccountID = 1
+	selected, err := modeSelect(t, scheduler, req)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	cache := svc.cache.(*schedulerTestGatewayCache)
+	require.Empty(t, cache.deletedSessions, "latency fallback must preserve sticky state")
+	other, err := svc.accountRepo.GetByID(context.Background(), 6)
+	require.NoError(t, err)
+	forged := *selected
+	forged.Account = other
+	require.ErrorIs(t, svc.CheckPriorityLatencySelection(context.Background(), &forged), ErrPriorityLatencyUnavailable, "later guard cannot add a sixth candidate")
+	setModeSignal(svc, req, 6, func(v *PrioritySchedulingSignal) { v.P90TTFTMs = 15001 })
+	require.ErrorIs(t, svc.CheckPriorityLatencySelection(context.Background(), &forged), ErrPriorityLatencyUnavailable, "new ranking cannot expand this request's frozen set")
+	for _, flag := range []string{"guardian", "disable", "preserve", "encrypted"} {
+		bound := req
+		bound.StickyAccountID = 6
+		cache.sessionBindings["openai:mode-sticky"] = 6
+		switch flag {
+		case "guardian":
+			bound.GuardianParentAccountID = 6
+		case "disable":
+			bound.DisableStickyEscape = true
+		case "preserve":
+			bound.PreserveStickyBinding = true
+		case "encrypted":
+			bound.EncryptedReasoning = true
+		}
+		// Put owner outside the lowest two before starting a new request.
+		setModeSignal(svc, req, 6, func(v *PrioritySchedulingSignal) { v.P90TTFTMs = 21000 })
+		got, err := modeSelect(t, scheduler, bound)
+		require.Nil(t, got)
+		require.ErrorIs(t, err, ErrPriorityLatencyUnavailable, flag)
+	}
+}
+
+func TestPriorityLatencyAvailabilitySafetyNoWaiver(t *testing.T) {
+	for _, gate := range []string{"admin disabled", "auth error", "rate limited", "overloaded", "excluded", "privacy"} {
+		t.Run(gate, func(t *testing.T) {
+			svc, scheduler, req := availabilityFixture(t, 16000)
+			repo := svc.accountRepo.(schedulerGroupAwareOpenAIAccountRepo)
+			until := time.Now().Add(time.Hour)
+			switch gate {
+			case "admin disabled":
+				repo.accounts[0].Schedulable = false
+			case "auth error":
+				repo.accounts[0].Status = StatusError
+			case "rate limited":
+				repo.accounts[0].RateLimitResetAt = &until
+			case "overloaded":
+				repo.accounts[0].OverloadUntil = &until
+			case "excluded":
+				req.ExcludedIDs = map[int64]struct{}{1: {}}
+			case "privacy":
+				req.RequirePrivacySet = true
+			}
+			svc.accountRepo = repo
+			selected, err := modeSelect(t, scheduler, req)
+			require.Nil(t, selected)
+			require.Error(t, err, "availability must never waive "+gate)
+		})
+	}
+}
+
+func TestPriorityLatencyAvailabilityNativeFallback(t *testing.T) {
+	for _, mode := range []string{OpenAIWSIngressModeCtxPool, OpenAIWSIngressModeShared, OpenAIWSIngressModeDedicated} {
+		t.Run(mode, func(t *testing.T) {
+			svc, req, account, upstream, dialer, ctx := reviewNativeFixture(t, mode)
+			var accounts []Account
+			signals := map[int64]PrioritySchedulingSignal{}
+			pool := []openAIAccountCandidateScore{}
+			bad := time.Now().Add(-time.Minute)
+			for id := int64(1); id <= 6; id++ {
+				a := *account
+				a.ID = id
+				accounts = append(accounts, a)
+				pool = append(pool, openAIAccountCandidateScore{account: &accounts[len(accounts)-1]})
+				signals[id] = PrioritySchedulingSignal{Samples: 20, P90TTFTMs: 15000 + float64(id)*1000, LatestBadLatencyAt: &bad}
+			}
+			svc.accountRepo = schedulerGroupAwareOpenAIAccountRepo{schedulerTestOpenAIAccountRepo{accounts: accounts}}
+			svc.usageLogRepo = &priorityReaderStub{signal: signals}
+			svc.priorityScheduling.mu.Lock()
+			svc.priorityScheduling.entries = nil
+			svc.priorityScheduling.launches = [2]time.Time{}
+			svc.priorityScheduling.mu.Unlock()
+			cfg := svc.prioritySchedulingRuntimeConfig()
+			require.Eventually(t, func() bool { return svc.priorityHistory(req, cfg, pool).ready() }, time.Second, time.Millisecond)
+			close(dialer.release)
+			client, done := reviewNativeClient(t, ctx, svc, req, account)
+			requirePassthroughUpstreamWrite(t, upstream.stagedPassthroughConn, time.Second)
+			upstream.Send(`{"type":"response.output_text.delta","delta":"fallback started"}`)
+			delta, err := readPassthroughLifecycleFrame(t, client, time.Second)
+			require.NoError(t, err)
+			require.Contains(t, string(delta), "fallback started")
+			// A late healthy alternative may restrict the next turn, never this output.
+			setModeSignal(svc, req, 6, func(v *PrioritySchedulingSignal) { v.P90TTFTMs = 500; v.LatestBadLatencyAt = nil })
+			upstream.Send(`{"type":"response.completed","response":{"id":"resp_fallback_native","model":"gpt-test","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`)
+			terminal, err := readPassthroughLifecycleFrame(t, client, time.Second)
+			require.NoError(t, err)
+			require.Contains(t, string(terminal), "response.completed")
+			require.Empty(t, upstream.writes, "admitted fallback output must complete without replay")
+			_ = client.Close(1000, "done")
+			select {
+			case err := <-done:
+				require.NoError(t, err)
+			case <-time.After(3 * time.Second):
+				t.Fatal("native fallback cleanup timed out")
+			}
+		})
+	}
 }
