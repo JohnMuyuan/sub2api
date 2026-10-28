@@ -26,7 +26,7 @@ jobs:
           mkdir -p evidence
           git rev-parse HEAD | tee evidence/head.txt
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
-          sha256sum backend/internal/repository/quality_template_complete*integration_test.go backend/internal/service/quality_rule_preset_test.go frontend/src/utils/__tests__/qualityRulePatch.spec.ts frontend/src/views/admin/__tests__/AccountQualityView.spec.ts > evidence/test-input.sha256
+          sha256sum backend/internal/repository/quality_template_complete*integration_test.go backend/internal/service/quality_rule_preset_test.go frontend/src/utils/__tests__/qualityRulePatch.spec.ts frontend/src/views/admin/__tests__/AccountQualityView.spec.ts frontend/src/api/admin/__tests__/scheduledTests.spec.ts > evidence/test-input.sha256
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
@@ -60,7 +60,7 @@ jobs:
           set -euo pipefail
           git diff --exit-code
           sha256sum -c evidence/test-input.sha256
-          (cd backend && go test -tags=integration ./internal/repository -run '^TestQuality(Template|Preset|Orphan|Ownership|Isolation|152|LiveDeleteHTTP|RuleReuse)' -count=1 -v) 2>&1 | tee evidence/green-storage.log
+          (cd backend && go test -tags=integration ./internal/repository -run '^TestQuality(Template|Preset|Orphan|Ownership|Isolation|152|LiveDeleteHTTP|RuleTemplate|Reuse)' -count=1 -v) 2>&1 | tee evidence/green-storage.log
           if grep -Eq -- '--- SKIP:|no tests to run' evidence/green-storage.log; then exit 1; fi
           for name in TestQualityTemplateCompleteHTTPRoundtripAllActions TestQualityTemplateCompleteRejectsInvalidGroupsAndPermissions TestQualityTemplateCompleteExistingIsolationGuard TestQualityTemplateCompleteLegacyReadAndRevalidation TestQualityTemplateCompleteDetectionModesAndProviders TestQualityTemplateCompleteDistributionKeepsItsOwnSemantics TestQualityTemplateCompleteDistributionCannotOverrideIsolatedScope TestQualityPresetPersistsWithoutDistributingPlans; do
             grep -F -- "--- PASS: $name" evidence/green-storage.log
@@ -101,7 +101,7 @@ jobs:
           set -euo pipefail
           git diff --exit-code
           sha256sum -c evidence/test-input.sha256
-          pnpm --dir frontend exec vitest run src/utils/__tests__/qualityRulePatch.spec.ts src/components/admin/operations/__tests__/QualityOwnershipReview.spec.ts src/views/admin/__tests__/AccountQualityView.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts 2>&1 | tee evidence/green-ui.log
+          pnpm --dir frontend exec vitest run src/api/admin/__tests__/scheduledTests.spec.ts src/utils/__tests__/qualityRulePatch.spec.ts src/components/admin/operations/__tests__/QualityOwnershipReview.spec.ts src/views/admin/__tests__/AccountQualityView.spec.ts src/i18n/__tests__/localeKeyCompleteness.spec.ts 2>&1 | tee evidence/green-ui.log
       - name: Install isolated browser
         run: |
           npm install --prefix "$RUNNER_TEMP/quality-browser" --no-save --ignore-scripts playwright@1.56.1
