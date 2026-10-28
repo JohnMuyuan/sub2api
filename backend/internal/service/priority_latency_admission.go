@@ -51,6 +51,11 @@ func (p *priorityLatencyPool) fallbackActive() bool { return p.fallback.Load() !
 // stopped during a slot/handshake wait. Atomic publication prevents concurrent
 // guards from opening different sets. Later history can only narrow membership.
 func (p *priorityLatencyPool) members(current map[int64]struct{}, fallback bool) map[int64]struct{} {
+	// Healthy peers in the original eligible universe always take precedence;
+	// allowing a recovered peer does not enlarge the stopped fallback set.
+	if !fallback {
+		return current
+	}
 	if fallback {
 		p.fallback.CompareAndSwap(nil, &priorityLatencyFallback{allowed: current})
 	}
@@ -254,7 +259,7 @@ func (s *OpenAIGatewayService) priorityLatencyBeforeSend(ctx context.Context, ac
 
 func ownedPriorityScheduleRequest(req OpenAIAccountScheduleRequest) OpenAIAccountScheduleRequest {
 	// Retain only identity and feature applicability, never session/response IDs.
-	copy := OpenAIAccountScheduleRequest{Platform: req.Platform, RequestedModel: req.RequestedModel, HistoryModel: req.HistoryModel, InboundEndpoint: req.InboundEndpoint, UseUpstreamTokenCost: req.UseUpstreamTokenCost, RequiredImageCapability: req.RequiredImageCapability, RequireCompact: req.RequireCompact, RequiredCapability: req.RequiredCapability, RequiredTransport: req.RequiredTransport, RequirePrivacySet: req.RequirePrivacySet, priorityLatencyPool: req.priorityLatencyPool}
+	copy := OpenAIAccountScheduleRequest{Platform: req.Platform, RequestedModel: req.RequestedModel, HistoryModel: req.HistoryModel, InboundEndpoint: req.InboundEndpoint, UseUpstreamTokenCost: req.UseUpstreamTokenCost, RequiredImageCapability: req.RequiredImageCapability, RequireCompact: req.RequireCompact, RequiredCapability: req.RequiredCapability, RequiredTransport: req.RequiredTransport, RequirePrivacySet: req.RequirePrivacySet, ExcludedIDs: cloneExcludedAccountIDs(req.ExcludedIDs), priorityLatencyPool: req.priorityLatencyPool}
 	if req.GroupID != nil {
 		id := *req.GroupID
 		copy.GroupID = &id

@@ -443,3 +443,20 @@ func TestPriorityLatencyAvailabilityLastHealthyStopsDuringWait(t *testing.T) {
 	forged.Account = outside
 	require.ErrorIs(t, svc.CheckPriorityLatencySelection(context.Background(), &forged), ErrPriorityLatencyUnavailable, "late fallback is frozen once and cannot expand")
 }
+
+func TestPriorityLatencyAvailabilityRecoveredHealthyPeer(t *testing.T) {
+	svc, scheduler, req := availabilityFixture(t, 16000, 17000, 18000, 19000, 20000, 21000)
+	selected, err := modeSelect(t, scheduler, req)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	ctx := ContextWithSelectionPriorityRequest(context.Background(), selected)
+	setModeSignal(svc, req, 6, func(v *PrioritySchedulingSignal) { v.P90TTFTMs = 500; v.LatestBadLatencyAt = nil })
+	recovered, _, err := scheduler.Select(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, recovered)
+	if recovered.ReleaseFunc != nil {
+		t.Cleanup(recovered.ReleaseFunc)
+	}
+	require.Equal(t, int64(6), recovered.Account.ID, "recovered healthy peer wins without enlarging the stopped fallback set")
+	require.ErrorIs(t, svc.CheckPriorityLatencySelection(ctx, selected), ErrPriorityLatencyUnavailable)
+}
