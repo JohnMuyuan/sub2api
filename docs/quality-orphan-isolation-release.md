@@ -8,4 +8,4 @@
 
 前端选择目标、查看效果或阻断原因、选择操作原因、勾选确认后提交；再次读取预览成功才同步移除草稿模型，其余草稿保留。readback 失败明确提示确认可能已提交、需重新预览核对。规则本身在确认事务中已收缩，下一轮不会重新隔离被移除模型，其他草稿设置可随后普通保存。
 
-验收状态：首轮远端精确 head `91c119cac64112009c84113f09547c0cb51bdfb3` 的旧源码 PostgreSQL RED、新源码 repository/HTTP 与原保护 GREEN 已取得；首轮前端夹具失败已修正，修正后本机定向 128/128 通过。当前 head 的远端完整复验与截图仍 pending。未运行或失败项不会标作通过；最终结果见 PR 验收清单与 CI artifacts。本机未运行 Go 编译/动态测试、Docker、全量前端 build/lint/typecheck，无生产操作或付费请求。
+验证工作流记录 PR 的精确 head 和回归输入校验和，使用同一测试先替换回基线 ownership 源码取得 PostgreSQL RED，再恢复 head 验证 repository/HTTP 与原有保护 GREEN。前端同样验证旧组件 RED、新组件 preview-confirm-readback GREEN，并输出离线浏览器截图。真实执行结果、未运行项及 artifacts 以 PR 验收清单和对应 head CI 为准。本机不运行 Go 编译/动态测试、Docker、全量前端 build/lint/typecheck；无生产操作或付费请求。
