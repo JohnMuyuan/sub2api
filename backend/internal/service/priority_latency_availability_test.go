@@ -460,3 +460,32 @@ func TestPriorityLatencyAvailabilityRecoveredHealthyPeer(t *testing.T) {
 	require.Equal(t, int64(6), recovered.Account.ID, "recovered healthy peer wins without enlarging the stopped fallback set")
 	require.ErrorIs(t, svc.CheckPriorityLatencySelection(ctx, selected), ErrPriorityLatencyUnavailable)
 }
+
+func TestPriorityLatencyAvailabilityHTTPWSLease(t *testing.T) {
+	svc, req, account, upstream, dialer, ctx := reviewNativeFixture(t, OpenAIWSIngressModeCtxPool)
+	c := newOpenAIRejectedFieldTestContext([]byte(`{"model":"gpt-test","input":"synthetic"}`))
+	c.Request = c.Request.WithContext(ctx)
+	admitted, err := svc.beginPriorityLatencyTurn(ctx, c, account, req.RequestedModel)
+	require.NoError(t, err)
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.forwardOpenAIWSV2(admitted, c, account, map[string]any{"model": req.RequestedModel, "input": "synthetic"}, "", "", "sk-synthetic", svc.getOpenAIWSProtocolResolver().Resolve(account), false, false, req.RequestedModel, req.RequestedModel, time.Now(), 0, "", nil)
+		done <- err
+	}()
+	select {
+	case <-dialer.entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("HTTP WS forward did not reach lease barrier")
+	}
+	reviewActivateStop(svc, req, account.ID)
+	close(dialer.release)
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, ErrPriorityLatencyUnavailable)
+	case write := <-upstream.writes:
+		require.Empty(t, write, "HTTP-to-WS lease wait must reject a newly stopped generation before writing")
+	case <-time.After(3 * time.Second):
+		t.Fatal("HTTP WS late admission did not complete")
+	}
+	require.Empty(t, upstream.writes, "latency rejection must not send or replay generation")
+}
