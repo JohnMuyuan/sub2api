@@ -71,7 +71,7 @@ jobs:
         run: python3 .github/scripts/upstream-v0219-remaining-red.py
       - name: Fixed-tag pricing and usage regressions
         working-directory: backend
-        run: go test -tags=unit ./internal/pkg/openai ./internal/pkg/apicompat ./internal/service -run 'Test.*(Deepseek|DeepSeek|GPT61Terra|GeminiImage|Gemini.*Image|CountGemini|ModelPricingCatalog|ModelPlaza|PlazaGroups|IsImageGenerationModel|Image.*Pricing|Pricing.*Image|ImageCountBilling|BillableImage|CountOpenAIImage|ChannelPerRequestContextTier)' -count=1 -v
+        run: go test -tags=unit ./internal/pkg/openai ./internal/pkg/apicompat ./internal/service -run 'Test.*(Deepseek|DeepSeek|GPT61Terra|GeminiImage|Gemini.*Image|CountGemini|ModelPricingCatalog|ModelPlaza|PlazaGroups|IsImageGenerationModel|Image.*Pricing|Pricing.*Image|ImageCountBilling|BillableImage|CountOpenAIImage|ChannelPerRequestContextTier|ExplicitTokenCardsAcrossGateways|AuthoritativeZeroCacheRead)' -count=1 -v
       - name: Grok catalog audit and ownership regressions
         working-directory: backend
         run: |
@@ -82,7 +82,7 @@ jobs:
         run: go test -tags=integration ./internal/repository -run '^TestUsageLog_UpstreamModelMismatchFilterAndPartialIndex$' -count=10 -v
       - name: Ownership and cancellation race regressions
         working-directory: backend
-        run: go test -race -tags=unit ./internal/service ./internal/server/middleware -run 'TestOpenAIModelsSingleflight|TestScopedAdmin|TestPanelRate|TestAPIKeyAdmissionModels|TestFetchCodexModelsManifestAPIKeySharedRefreshSurvivesCallerCancellation|TestGrokCatalogPersistConcurrentWritersAreRaceSafe|TestGrokCatalog' -count=1
+        run: go test -race -tags=unit ./internal/service ./internal/server/middleware -run 'TestOpenAIModelsSingleflight|TestScopedAdmin|TestPanelRate|TestAPIKeyAdmissionModels|TestFetchCodexModelsManifestAPIKeySharedRefreshSurvivesCallerCancellation|TestGrokCatalogPersistConcurrentWritersAreRaceSafe|ImageCountBillingPreservesExplicitTokenCardsAcrossGateways|GrokCatalog' -count=1
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
