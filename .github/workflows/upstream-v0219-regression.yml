@@ -1,0 +1,48 @@
+name: Upstream v0.2.19 regressions
+on:
+  push:
+    branches: [cherry/upstream-v0.2.19]
+  pull_request:
+    branches: [production]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/upstream-v0219-regression.yml'
+permissions:
+  contents: read
+jobs:
+  regression:
+    if: github.head_ref == 'cherry/upstream-v0.2.19' || github.ref_name == 'cherry/upstream-v0.2.19'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Pagination behavior RED against production baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          targets=(backend/internal/pkg/pagination/pagination.go backend/internal/pkg/response/response.go)
+          trap 'git restore --source=HEAD -- "${targets[@]}"' EXIT
+          for target in "${targets[@]}"; do
+            git show e6b30da8f75b382a20b56b712a209e9f7d8c72fb:"$target" > "$target"
+          done
+          set +e
+          (cd backend && go test -tags=unit ./internal/pkg/pagination ./internal/pkg/response -run 'TestPaginationParamsOffsetDoesNotOverflow|TestParsePaginationBoundariesAndResponse' -count=1 -v) > "$RUNNER_TEMP/upstream-v0219-red.log" 2>&1
+          result=$?
+          set -e
+          cat "$RUNNER_TEMP/upstream-v0219-red.log"
+          test "$result" -ne 0
+          ! grep -q '\[build failed\]' "$RUNNER_TEMP/upstream-v0219-red.log"
+          grep -q -- '--- FAIL: TestPaginationParamsOffsetDoesNotOverflow' "$RUNNER_TEMP/upstream-v0219-red.log"
+          grep -q -- '--- FAIL: TestParsePaginationBoundariesAndResponse' "$RUNNER_TEMP/upstream-v0219-red.log"
+      - name: Exact head GREEN
+        working-directory: backend
+        run: |
+          git diff --exit-code
+          git rev-parse HEAD
+          go test -tags=unit ./internal/pkg/pagination ./internal/pkg/response ./internal/repository ./internal/securityaudit ./internal/handler/admin ./internal/service -run 'Test(Pagination|ParsePagination|_parseInt|Paginate|MergeBalanceHistoryCodesLargePage|ParseOpsOpenAITokenStatsFilter|PromptAdminRejects)' -count=1 -v
