@@ -28,3 +28,24 @@ exceptions:
     mitigation: "No zero-size custom generators in codebase; upgrade when nanoid releases fix"
     expires_on: "2026-10-13"
     owner: "security@your-domain"
+  - package: vue-i18n
+    advisory: "GHSA-83rm-6c8r-g728"
+    severity: high
+    reason: "No 9.x fix exists; escapeParameter is not enabled and no translation output is rendered with v-html"
+    mitigation: "Translation messages are bundled locale files, not user input; migrate to vue-i18n 11.4.14+"
+    expires_on: "2027-01-29"
+    owner: "security@your-domain"
+  - package: "@intlify/core-base"
+    advisory: "GHSA-83rm-6c8r-g728"
+    severity: high
+    reason: "No 9.x fix exists; escapeParameter is not enabled and no translation output is rendered with v-html"
+    mitigation: "Translation messages are bundled locale files, not user input; migrate to vue-i18n 11.4.14+"
+    expires_on: "2027-01-29"
+    owner: "security@your-domain"
+  - package: "@intlify/shared"
+    advisory: "GHSA-83rm-6c8r-g728"
+    severity: high
+    reason: "No 9.x fix exists; escapeParameter is not enabled and no translation output is rendered with v-html"
+    mitigation: "Translation messages are bundled locale files, not user input; migrate to vue-i18n 11.4.14+"
+    expires_on: "2027-01-29"
+    owner: "security@your-domain"
