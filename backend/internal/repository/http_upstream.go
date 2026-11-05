@@ -168,14 +168,21 @@ type openAIHTTP2FallbackState struct {
 // 5. 仅回收空闲客户端，避免中断活跃请求
 // 6. HTTP/2 多路复用，连接上限不等于并发请求上限
 // 7. 代理变更时清空旧连接池，避免复用错误代理
+// OpenAIResponseHeaderTimeoutProvider supplies the admin-configurable
+// response-header timeout for OpenAI/Codex HTTP upstream clients.
+type OpenAIResponseHeaderTimeoutProvider interface {
+	GetOpenAIResponseHeaderTimeoutCached(ctx context.Context) (int, bool)
+}
+
 // 8. 账号并发数与连接池上限对应（账号隔离策略下）
 type httpUpstreamService struct {
-	accountTimezones  *accountTimezoneLookup
-	upstreamRoutes    *upstreamroute.Router
-	upstreamRoutesErr error
-	cfg               *config.Config                  // 全局配置
-	mu                sync.RWMutex                    // 保护 clients map 的读写锁
-	clients           map[string]*upstreamClientEntry // 客户端缓存池，key 由隔离策略决定
+	accountTimezones                    *accountTimezoneLookup
+	upstreamRoutes                      *upstreamroute.Router
+	upstreamRoutesErr                   error
+	cfg                                 *config.Config                      // 全局配置
+	openAIResponseHeaderTimeoutProvider OpenAIResponseHeaderTimeoutProvider // 可选：DB 设置覆盖
+	mu                                  sync.RWMutex                        // 保护 clients map 的读写锁
+	clients                             map[string]*upstreamClientEntry     // 客户端缓存池，key 由隔离策略决定
 	// OpenAI 走 HTTP/HTTPS 代理时的 H2->H1 回退状态（key=标准化 proxyKey）
 	openAIHTTP2Fallbacks sync.Map
 	// BPS fallback state is isolated from Codex and contains only hashed proxy keys.
@@ -194,11 +201,33 @@ func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
 	return newHTTPUpstream(cfg, nil)
 }
 
-func newHTTPUpstream(cfg *config.Config, timezones *accountTimezoneLookup) service.HTTPUpstream {
+// ProvideHTTPUpstream wires the admin-configurable OpenAI response-header
+// timeout provider. Tests and lightweight callers can keep using
+// NewHTTPUpstream, which falls back to the static config.
+func ProvideHTTPUpstream(cfg *config.Config, settings *service.SettingService) service.HTTPUpstream {
+	return provideHTTPUpstream(cfg, settings, nil)
+}
+
+func provideHTTPUpstream(cfg *config.Config, settings *service.SettingService, timezones *accountTimezoneLookup) service.HTTPUpstream {
+	if settings == nil {
+		return newHTTPUpstreamWithTimezones(cfg, nil, timezones)
+	}
+	// Warm the cache before the first OpenAI request; the transport reads it
+	// synchronously when it builds a client pool.
+	go settings.GetOpenAIResponseHeaderTimeoutCached(context.Background())
+	return newHTTPUpstreamWithTimezones(cfg, settings, timezones)
+}
+
+func newHTTPUpstream(cfg *config.Config, provider OpenAIResponseHeaderTimeoutProvider) service.HTTPUpstream {
+	return newHTTPUpstreamWithTimezones(cfg, provider, nil)
+}
+
+func newHTTPUpstreamWithTimezones(cfg *config.Config, provider OpenAIResponseHeaderTimeoutProvider, timezones *accountTimezoneLookup) service.HTTPUpstream {
 	s := &httpUpstreamService{
-		cfg:              cfg,
-		clients:          make(map[string]*upstreamClientEntry),
-		accountTimezones: timezones,
+		cfg:                                 cfg,
+		openAIResponseHeaderTimeoutProvider: provider,
+		clients:                             make(map[string]*upstreamClientEntry),
+		accountTimezones:                    timezones,
 	}
 	if cfg != nil {
 		s.upstreamRoutes, s.upstreamRoutesErr = upstreamroute.New(cfg.Gateway.UpstreamRouting)
@@ -381,7 +410,16 @@ func doUpstreamRequest(client *http.Client, req *http.Request) (result *http.Res
 		cancel()
 		return resp, err
 	}
+	timingTrace.Headers(resp)
+	requesttiming.Encoding(req.Context(), resp)
+	if !resp.Uncompressed {
+		resp.Body = requesttiming.WrapStage(req.Context(), resp.Body, "raw_body_first")
+	}
 	decompressResponseBody(resp)
+	// A retained encoding means decompression was unsupported or failed.
+	if encoding := strings.TrimSpace(resp.Header.Get("Content-Encoding")); encoding == "" || strings.EqualFold(encoding, "identity") {
+		resp.Body = requesttiming.WrapStage(req.Context(), resp.Body, "decoded_body_first")
+	}
 	resp.Body = &cancelOnCloseBody{ReadCloser: resp.Body, cancel: cancel}
 	return resp, nil
 }
@@ -464,7 +502,9 @@ func httpClientWithGrokAccessDeniedFallback(client *http.Client) *http.Client {
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	clone.Transport = &grokAccessDeniedFallbackTransport{base: base}
+	// Observe each physical RoundTrip before the compatibility fallback so
+	// a rejected send followed by a successful retry remains two samples.
+	clone.Transport = &grokAccessDeniedFallbackTransport{base: &accountResponseTransport{base: base}}
 	return &clone
 }
 
@@ -1047,7 +1087,11 @@ func (s *httpUpstreamService) applyProfilePoolSettings(settings poolSettings, pr
 	switch profile {
 	case service.HTTPUpstreamProfileOpenAI:
 		settings.responseHeaderTimeout = 0
-		if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIResponseHeaderTimeout > 0 {
+		if s != nil && s.openAIResponseHeaderTimeoutProvider != nil {
+			if seconds, enabled := s.openAIResponseHeaderTimeoutProvider.GetOpenAIResponseHeaderTimeoutCached(context.Background()); enabled && seconds > 0 {
+				settings.responseHeaderTimeout = time.Duration(seconds) * time.Second
+			}
+		} else if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIResponseHeaderTimeout > 0 {
 			settings.responseHeaderTimeout = time.Duration(s.cfg.Gateway.OpenAIResponseHeaderTimeout) * time.Second
 		}
 	case service.HTTPUpstreamProfileGrok:

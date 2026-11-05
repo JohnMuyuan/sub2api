@@ -78,6 +78,7 @@ var ProviderSet = wire.NewSet(
 	NewAdminGroupRepository,
 	NewCompositeModelRouteRepository,
 	NewAccountRepository,
+	NewAccountPerformanceRepository,
 	NewAdminAccountRepository,
 	NewAccountOpsRepository,
 	NewAccountTokenGuardRepository,
@@ -184,7 +185,7 @@ var ProviderSet = wire.NewSet(
 	NewProxyExitInfoProber,
 	NewClaudeUsageFetcher,
 	NewClaudeOAuthClient,
-	NewHTTPUpstreamWithAccountTimezone,
+	ProvideHTTPUpstreamWithAccountTimezone,
 	NewOpenAIOAuthClient,
 	NewOpenAIReferralClient,
 	NewGrokOAuthClient,
@@ -194,6 +195,7 @@ var ProviderSet = wire.NewSet(
 
 	ProvideEnt,
 	ProvideSQLDB,
+	NewAutoCreditRepository,
 	ProvideRedis,
 )
 

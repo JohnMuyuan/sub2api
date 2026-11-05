@@ -1141,6 +1141,15 @@ export default {
         allowUserRefund: '允许用户退款',
         enableConflict: '{method} 已有启用中的服务商实例：{provider}。请先停用现有实例后再启用或切换。',
       },
+      balanceForecast: {
+        title: "余额耗尽预测提醒",
+        description: "按最近 24 小时已结算的余额消费估算剩余时间；默认关闭，与金额提醒独立。",
+        enabled: "启用预测提醒",
+        threshold: "提前提醒（小时，最多 168）",
+        cap: "每个连续预警期通知上限（1–10）",
+        hint: "默认提前 12 小时、最多 3 次；每小时至多一轮。复用充值链接、已验证通知邮箱和退订偏好。低样本或结算覆盖不足时不发送；发送结果不确定也占用额度。剩余时长持续一小时高于阈值的 120% 后，才开始新的预警期。",
+        invalid: "预测提前时间须为 0–168 小时之间的正数，通知上限须为 1–10 的整数。",
+      },
       balanceNotify: {
         title: '余额不足提醒',
         description: '当用户余额低于阈值时发送邮件提醒',
@@ -1307,6 +1316,19 @@ export default {
         thresholdWindowMinutesHint: '超时计数的时间窗口（1-60分钟）',
         saved: '流超时设置保存成功',
         saveFailed: '保存流超时设置失败'
+      },
+      openaiResponseHeaderTimeout: {
+        title: 'OpenAI 响应头超时',
+        description:
+          '限制 OpenAI/Codex HTTP 上传完成后的响应头等待。超时后切到下一个账号；第一次尝试可能已在上游计费，成功请求会按 1:1 追加一次费用。已收到响应头的正文流、原生上游 WebSocket 使用各自时限。',
+        enabled: '启用响应头超时',
+        enabledHint: '关闭后不设 OpenAI 专用响应头超时（等价于 0）',
+        seconds: '超时时间（秒）',
+        secondsHint:
+          '范围 1–600 秒，默认 20 秒。慢非流式响应及 SSE 响应头可能在首 token 前超时；已收到响应头的正文流、原生上游 WebSocket 使用各自时限。',
+        saved: 'OpenAI 响应头超时设置保存成功',
+        saveFailed: '保存 OpenAI 响应头超时设置失败',
+        loadFailed: '无法加载已保存的超时设置，请重新加载后编辑。'
       },
       rectifier: {
         title: '请求整流器',

@@ -18,7 +18,17 @@ type accountTimezoneLookup struct {
 
 // Keep the concrete transport (and its optional routing interfaces) intact.
 func NewHTTPUpstreamWithAccountTimezone(cfg *config.Config, cache service.SchedulerCache, accounts service.AccountRepository, prober service.ProxyExitInfoProber) service.HTTPUpstream {
-	return newHTTPUpstream(cfg, &accountTimezoneLookup{cache, accounts, service.NewAccountRequestTimezoneResolver(prober)})
+	return newHTTPUpstreamWithTimezones(cfg, nil, newAccountTimezoneLookup(cache, accounts, prober))
+}
+
+// ProvideHTTPUpstreamWithAccountTimezone combines account timezone binding with
+// the admin-configurable OpenAI response-header timeout.
+func ProvideHTTPUpstreamWithAccountTimezone(cfg *config.Config, settings *service.SettingService, cache service.SchedulerCache, accounts service.AccountRepository, prober service.ProxyExitInfoProber) service.HTTPUpstream {
+	return provideHTTPUpstream(cfg, settings, newAccountTimezoneLookup(cache, accounts, prober))
+}
+
+func newAccountTimezoneLookup(cache service.SchedulerCache, accounts service.AccountRepository, prober service.ProxyExitInfoProber) *accountTimezoneLookup {
+	return &accountTimezoneLookup{cache, accounts, service.NewAccountRequestTimezoneResolver(prober)}
 }
 
 func (s *httpUpstreamService) bindAccountTimezone(req *http.Request, accountID int64) *http.Request {

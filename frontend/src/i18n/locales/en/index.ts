@@ -1,3 +1,10 @@
+import autoCredit from './autoCredit'
+import accountPerformance from './accountPerformance'
+import apiKeyModelPolicy from './apiKeyModelPolicy'
+import lottery from './lottery'
+import accountTestTiming from './accountTestTiming'
+import openaiAuth from './openaiAuth'
+import upstreamEntities from './upstreamEntities'
 import profitOps from './profitOps'
 import upstreamOps from './upstreamOps'
 import channelOps from './channelOps'
@@ -26,6 +33,7 @@ import admin from './admin'
 import misc from './misc'
 
 import requestTiming from './requestTiming'
+import latencyObservability from './latencyObservability'
 
 import autoConfig from './autoConfig'
 
@@ -33,6 +41,13 @@ import accountViewer from './accountViewer'
 
 export default {
   accountViewer,
+  apiKeyModelPolicy,
+  autoCredit,
+  accountPerformance,
+  lottery,
+  accountTestTiming,
+  openaiAuth,
+  upstreamEntities,
   traffic,
   ipAudit,
   connections,
@@ -51,6 +66,7 @@ export default {
   modelTrace,
   tokenGuardV2,
   requestTiming,
+  latencyObservability,
   adminAccessKeys,
   ...landing,
   ...common,

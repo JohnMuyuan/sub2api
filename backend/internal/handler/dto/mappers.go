@@ -92,6 +92,8 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		GroupIDs:           k.ConfiguredGroupIDs(),
 		GroupID:            k.GroupID,
 		Status:             k.Status,
+		ModelMapping:       k.ModelMapping,
+		ReasoningEffort:    k.ReasoningEffort,
 		IPWhitelist:        k.IPWhitelist,
 		IPBlacklist:        k.IPBlacklist,
 		LastUsedAt:         k.LastUsedAt,
@@ -488,7 +490,8 @@ func AccountListItemFromAccount(a *Account) *AccountListItem {
 		return nil
 	}
 	return &AccountListItem{
-		ID: a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
+		UpstreamChannelBinding: a.UpstreamChannelBinding,
+		ID:                     a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
 		Credentials: a.Credentials, CredentialsStatus: a.CredentialsStatus, Extra: a.Extra,
 		ExcelBPSCredentialState: a.ExcelBPSCredentialState,
 		OllamaCloudUsage:        a.OllamaCloudUsage, CodexTurnTickets: a.CodexTurnTickets, SchedulingThresholdRounds: a.SchedulingThresholdRounds,
@@ -751,6 +754,9 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		NativeCompactionV2:        l.NativeCompactionV2,
 		DurationMs:                l.DurationMs,
 		FirstTokenMs:              l.FirstTokenMs,
+		QueueWaitMs:               l.QueueWaitMs,
+		QueueTiming:               l.QueueTiming,
+		ContentTiming:             l.ContentTiming,
 		ImageCount:                l.ImageCount,
 		ImageSize:                 l.ImageSize,
 		ImageInputSize:            l.ImageInputSize,
