@@ -32,7 +32,8 @@ func usesCodexDirectImages(model string) bool {
 	switch strings.TrimSpace(model) {
 	case "gpt-image-1.5", "gpt-image-2",
 		"gpt-image-2.5-flare", "gpt-image-2.5-sunburst",
-		"gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst-2026-09-08":
+		"gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst-2026-09-08",
+		"gpt-image-2.6-flare", "gpt-image-2.6-sunburst":
 		return true
 	default:
 		return false
@@ -68,7 +69,7 @@ func buildOpenAIImagesOAuthPayload(parsed *OpenAIImagesRequest, model string) ([
 		{"size", parsed.Size}, {"quality", parsed.Quality},
 		{"background", parsed.Background}, {"output_format", parsed.OutputFormat},
 		{"moderation", parsed.Moderation}, {"input_fidelity", parsed.InputFidelity},
-		{"style", parsed.Style},
+		{"style", parsed.Style}, {"complexity", parsed.Complexity},
 	} {
 		if value := strings.TrimSpace(field.value); value != "" {
 			payload[field.key] = value
@@ -82,6 +83,12 @@ func buildOpenAIImagesOAuthPayload(parsed *OpenAIImagesRequest, model string) ([
 	}
 	if parsed.PartialImages != nil {
 		payload["partial_images"] = *parsed.PartialImages
+	}
+	if parsed.FrameCount != nil {
+		payload["frame_count"] = *parsed.FrameCount
+	}
+	if parsed.FrameDurationMS != nil {
+		payload["frame_duration_ms"] = *parsed.FrameDurationMS
 	}
 	if parsed.Stream {
 		payload["stream"] = true
@@ -117,6 +124,17 @@ func buildOpenAIImagesOAuthPayload(parsed *OpenAIImagesRequest, model string) ([
 		}
 		if mask != "" {
 			payload["mask"] = map[string]string{"image_url": mask}
+		}
+		markup := strings.TrimSpace(parsed.MarkupImageURL)
+		if parsed.MarkupUpload != nil {
+			var err error
+			markup, err = openAIImageUploadToDataURL(*parsed.MarkupUpload)
+			if err != nil {
+				return nil, "", err
+			}
+		}
+		if markup != "" {
+			payload["markup"] = map[string]string{"image_url": markup}
 		}
 	}
 	body, err := json.Marshal(payload)

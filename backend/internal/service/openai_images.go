@@ -93,6 +93,9 @@ type OpenAIImagesRequest struct {
 	Style              string
 	OutputCompression  *int
 	PartialImages      *int
+	Complexity         string
+	FrameCount         *int
+	FrameDurationMS    *int
 	HasMask            bool
 	HasNativeOptions   bool
 	RequiredCapability OpenAIImagesCapability
@@ -100,6 +103,8 @@ type OpenAIImagesRequest struct {
 	MaskImageURL       string
 	Uploads            []OpenAIImagesUpload
 	MaskUpload         *OpenAIImagesUpload
+	MarkupImageURL     string
+	MarkupUpload       *OpenAIImagesUpload
 	Body               []byte
 	bodyHash           string
 
@@ -151,6 +156,14 @@ func (r *OpenAIImagesRequest) moderationImages() []map[string]string {
 	}
 	if r.MaskUpload != nil {
 		if dataURL := r.MaskUpload.ModerationDataURL(); dataURL != "" {
+			images = append(images, map[string]string{"image_url": dataURL})
+		}
+	}
+	if markupURL := strings.TrimSpace(r.MarkupImageURL); markupURL != "" {
+		images = append(images, map[string]string{"image_url": markupURL})
+	}
+	if r.MarkupUpload != nil {
+		if dataURL := r.MarkupUpload.ModerationDataURL(); dataURL != "" {
 			images = append(images, map[string]string{"image_url": dataURL})
 		}
 	}
@@ -311,6 +324,20 @@ func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
 		v := int(partialImages.Int())
 		req.PartialImages = &v
 	}
+	// GPT Image 2.6 options: complexity, and GIF frame controls.
+	req.Complexity = strings.TrimSpace(gjson.GetBytes(body, "complexity").String())
+	for _, field := range []struct {
+		name   string
+		target **int
+	}{{"frame_count", &req.FrameCount}, {"frame_duration_ms", &req.FrameDurationMS}} {
+		if result := gjson.GetBytes(body, field.name); result.Exists() {
+			if result.Type != gjson.Number {
+				return fmt.Errorf("invalid %s field type", field.name)
+			}
+			v := int(result.Int())
+			*field.target = &v
+		}
+	}
 	if req.IsEdits() {
 		images := gjson.GetBytes(body, "images")
 		if images.Exists() {
@@ -333,6 +360,10 @@ func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
 		}
 		if gjson.GetBytes(body, "mask.file_id").Exists() {
 			return fmt.Errorf("mask.file_id is not supported (use mask.image_url instead)")
+		}
+		req.MarkupImageURL = strings.TrimSpace(gjson.GetBytes(body, "markup.image_url").String())
+		if gjson.GetBytes(body, "markup.file_id").Exists() {
+			return fmt.Errorf("markup.file_id is not supported (use markup.image_url instead)")
 		}
 		if len(req.InputImageURLs) == 0 {
 			return fmt.Errorf("images[].image_url is required")
@@ -395,6 +426,18 @@ func parseOpenAIImagesMultipartRequest(body []byte, contentType string, req *Ope
 					Height:      height,
 				}
 				req.MaskUpload = &maskUpload
+			}
+			if name == "markup" && len(data) > 0 {
+				req.HasNativeOptions = true
+				width, height := parseOpenAIImageDimensions(part.Header)
+				req.MarkupUpload = &OpenAIImagesUpload{
+					FieldName:   name,
+					FileName:    fileName,
+					ContentType: partContentType,
+					Data:        data,
+					Width:       width,
+					Height:      height,
+				}
 			}
 			if name == "image" || strings.HasPrefix(name, "image[") {
 				width, height := parseOpenAIImageDimensions(part.Header)
@@ -465,6 +508,20 @@ func parseOpenAIImagesMultipartRequest(body []byte, contentType string, req *Ope
 				return fmt.Errorf("invalid partial_images field value")
 			}
 			req.PartialImages = &n
+			req.HasNativeOptions = true
+		case "complexity":
+			req.Complexity = value
+			req.HasNativeOptions = true
+		case "frame_count", "frame_duration_ms":
+			n, err := strconv.Atoi(value)
+			if err != nil {
+				return fmt.Errorf("invalid %s field value", name)
+			}
+			if name == "frame_count" {
+				req.FrameCount = &n
+			} else {
+				req.FrameDurationMS = &n
+			}
 			req.HasNativeOptions = true
 		default:
 			if isOpenAINativeImageOption(name) && value != "" {
@@ -595,6 +652,10 @@ func hasOpenAINativeImageOptions(exists func(path string) bool) bool {
 		"moderation",
 		"input_fidelity",
 		"partial_images",
+		"complexity",
+		"frame_count",
+		"frame_duration_ms",
+		"markup",
 	} {
 		if exists(path) {
 			return true
@@ -605,7 +666,8 @@ func hasOpenAINativeImageOptions(exists func(path string) bool) bool {
 
 func isOpenAINativeImageOption(name string) bool {
 	switch strings.TrimSpace(strings.ToLower(name)) {
-	case "background", "quality", "style", "output_format", "output_compression", "moderation", "input_fidelity", "partial_images":
+	case "background", "quality", "style", "output_format", "output_compression", "moderation", "input_fidelity", "partial_images",
+		"complexity", "frame_count", "frame_duration_ms", "markup":
 		return true
 	default:
 		return false

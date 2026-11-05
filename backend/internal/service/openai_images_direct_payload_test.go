@@ -52,9 +52,76 @@ func TestCodexDirectImagesMultipartEdit(t *testing.T) {
 	require.False(t, gjson.GetBytes(upstreamBody, "tools").Exists())
 }
 
+func TestCodexDirectImagesGPTImage26Options(t *testing.T) {
+	svc := newOpenAIImagesTestService(nil)
+
+	body := []byte(`{"model":"gpt-image-2.6-flare","prompt":"loop","output_format":"gif","frame_count":12,"frame_duration_ms":80,"complexity":"low","size":"512x512"}`)
+	c, _ := newOpenAIImagesTestContext(t, body)
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+	require.Equal(t, OpenAIImagesCapabilityNative, parsed.RequiredCapability)
+	upstreamBody, target, err := buildOpenAIImagesOAuthPayload(parsed, parsed.Model)
+	require.NoError(t, err)
+	require.Equal(t, "https://chatgpt.com/backend-api/codex/images/generations", target)
+	require.Equal(t, "gif", gjson.GetBytes(upstreamBody, "output_format").String())
+	require.Equal(t, "low", gjson.GetBytes(upstreamBody, "complexity").String())
+	require.EqualValues(t, 12, gjson.GetBytes(upstreamBody, "frame_count").Int())
+	require.EqualValues(t, 80, gjson.GetBytes(upstreamBody, "frame_duration_ms").Int())
+
+	jsonEdit := []byte(`{"model":"gpt-image-2.6-sunburst","prompt":"edit","images":[{"image_url":"https://example.com/a.png"}],"markup":{"image_url":"data:image/png;base64,bWFya3Vw"}}`)
+	c, _ = newOpenAIImagesTestContext(t, jsonEdit)
+	c.Request.URL.Path = "/v1/images/edits"
+	parsed, err = svc.ParseOpenAIImagesRequest(c, jsonEdit)
+	require.NoError(t, err)
+	upstreamBody, target, err = buildOpenAIImagesOAuthPayload(parsed, parsed.Model)
+	require.NoError(t, err)
+	require.Equal(t, "https://chatgpt.com/backend-api/codex/images/edits", target)
+	require.Equal(t, "data:image/png;base64,bWFya3Vw", gjson.GetBytes(upstreamBody, "markup.image_url").String())
+	require.Contains(t, string(parsed.ModerationBody()), "bWFya3Vw", "markup images must go through input moderation")
+
+	invalid := []byte(`{"model":"gpt-image-2.6-flare","prompt":"x","frame_count":"9"}`)
+	c, _ = newOpenAIImagesTestContext(t, invalid)
+	_, err = svc.ParseOpenAIImagesRequest(c, invalid)
+	require.ErrorContains(t, err, "frame_count")
+}
+
+func TestCodexDirectImagesMultipartMarkup(t *testing.T) {
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	for key, value := range map[string]string{"model": "gpt-image-2.6-flare", "prompt": "follow the arrows", "complexity": "medium"} {
+		require.NoError(t, w.WriteField(key, value))
+	}
+	for _, field := range []string{"image", "markup"} {
+		header := textproto.MIMEHeader{}
+		header.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename="%s.png"`, field, field))
+		header.Set("Content-Type", "image/png")
+		part, err := w.CreatePart(header)
+		require.NoError(t, err)
+		_, err = part.Write([]byte(field + "-content"))
+		require.NoError(t, err)
+	}
+	require.NoError(t, w.Close())
+	c, _ := newOpenAIImagesTestContext(t, body.Bytes())
+	c.Request.URL.Path = "/v1/images/edits"
+	c.Request.Header.Set("Content-Type", w.FormDataContentType())
+	parsed, err := newOpenAIImagesTestService(nil).ParseOpenAIImagesRequest(c, body.Bytes())
+	require.NoError(t, err)
+	require.Len(t, parsed.Uploads, 1, "markup is not an input image")
+	upstreamBody, _, err := buildOpenAIImagesOAuthPayload(parsed, parsed.Model)
+	require.NoError(t, err)
+	require.Len(t, gjson.GetBytes(upstreamBody, "images").Array(), 1)
+	require.Equal(t, "data:image/png;base64,bWFya3VwLWNvbnRlbnQ=", gjson.GetBytes(upstreamBody, "markup.image_url").String())
+	require.Equal(t, "medium", gjson.GetBytes(upstreamBody, "complexity").String())
+}
+
+func TestOpenAIImageOutputMIMETypeGPTImage26Formats(t *testing.T) {
+	require.Equal(t, "image/gif", openAIImageOutputMIMEType("gif"))
+	require.Equal(t, "image/svg+xml", openAIImageOutputMIMEType("svg"))
+}
+
 func TestCodexDirectImagesPricingAndUsage(t *testing.T) {
 	prices := &PricingService{pricingData: map[string]*LiteLLMModelPricing{"gpt-image-2": {InputCostPerToken: 1}}}
-	for _, model := range []string{"gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst-2026-09-08"} {
+	for _, model := range []string{"gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst-2026-09-08", "gpt-image-2.6-flare", "gpt-image-2.6-sunburst"} {
 		price := prices.matchOpenAIModel(model)
 		require.Equal(t, 5e-6, price.InputCostPerToken)
 		require.Equal(t, 8e-6, price.InputCostPerImageToken)
@@ -66,6 +133,10 @@ func TestCodexDirectImagesPricingAndUsage(t *testing.T) {
 	var catalog map[string]LiteLLMModelPricing
 	require.NoError(t, json.Unmarshal(body, &catalog))
 	require.Equal(t, 2e-6, catalog["gpt-image-2.5-flare"].CacheReadInputImageTokenCost)
+	for _, model := range []string{"gpt-image-2.6-flare", "gpt-image-2.6-sunburst"} {
+		require.Equal(t, 30e-6, catalog[model].OutputCostPerImageToken, model)
+		require.Equal(t, 2e-6, catalog[model].CacheReadInputImageTokenCost, model)
+	}
 	usage, ok := codexDirectImagesUsage([]byte(`{"usage":{"input_tokens":100,"input_tokens_details":{"text_tokens":20,"image_tokens":80,"cached_tokens":50,"cached_tokens_details":{"text_tokens":10,"image_tokens":40}},"output_tokens":200}}`))
 	require.True(t, ok)
 	require.Equal(t, 40, usage.ImageCacheReadTokens)

@@ -320,6 +320,10 @@ func openAIImageOutputMIMEType(outputFormat string) string {
 		return "image/jpeg"
 	case "webp":
 		return "image/webp"
+	case "gif":
+		return "image/gif"
+	case "svg":
+		return "image/svg+xml"
 	default:
 		return "image/png"
 	}
