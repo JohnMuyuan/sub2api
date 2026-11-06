@@ -33,11 +33,6 @@ func TestDefaultModelsIncludeGPTImage25(t *testing.T) {
 	require.Contains(t, DefaultModelIDs(), "gpt-image-2.5-sunburst")
 }
 
-func TestDefaultModelsIncludeGPTImage26(t *testing.T) {
-	require.Contains(t, DefaultModelIDs(), "gpt-image-2.6-flare")
-	require.Contains(t, DefaultModelIDs(), "gpt-image-2.6-sunburst")
-}
-
 func TestGPT6SolLunaModelIdentity(t *testing.T) {
 	for _, model := range []string{"gpt-6-sol", "gpt-6-luna"} {
 		require.Contains(t, DefaultModelIDs(), model)
@@ -65,4 +60,20 @@ func TestGPT61SolIdentityAndEffort(t *testing.T) {
 		require.NoError(t, ValidateGPT61SolReasoningEffort("gpt-6-sol", effort))
 	}
 	require.Contains(t, CodexBaseInstructionsForModel("gpt-6.1-sol"), "based on GPT-6")
+}
+
+func TestDefaultModelsIncludeGPTImage26(t *testing.T) {
+	for _, model := range []string{"gpt-image-2.6-flare", "gpt-image-2.6-sunburst"} {
+		require.Contains(t, DefaultModelIDs(), model)
+	}
+	for _, model := range []string{"gpt-5.2", "gpt-5.3-codex-spark", "gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-image-1", "gpt-image-1.5"} {
+		require.NotContains(t, DefaultModelIDs(), model)
+	}
+}
+
+func TestDefaultModelMetadata(t *testing.T) {
+	for _, model := range DefaultModels {
+		require.Positive(t, model.Created, model.ID)
+		require.NotEmpty(t, model.DisplayName, model.ID)
+	}
 }

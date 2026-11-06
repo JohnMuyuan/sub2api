@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand/v2"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -89,10 +90,16 @@ func DefaultAccountWindowPrimeSettings() AccountWindowPrimeSettings {
 // AccountWindowPrimeModelOptions lists the built-in models per platform for the
 // system settings picker; accounts list their own upstream models instead.
 func AccountWindowPrimeModelOptions() map[string][]string {
-	return map[string][]string{
+	out := map[string][]string{
 		PlatformOpenAI:    openai.DefaultModelIDs(),
 		PlatformAnthropic: claude.DefaultModelIDs(),
 	}
+	for platform, defaultModel := range accountWindowPrimeDefaultModels() {
+		if !slices.Contains(out[platform], defaultModel) {
+			out[platform] = append(out[platform], defaultModel)
+		}
+	}
+	return out
 }
 
 func accountWindowPrimeDefaultModels() map[string]string {
