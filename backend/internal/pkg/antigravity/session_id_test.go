@@ -138,7 +138,10 @@ func TestTransformClaudeToGemini_DeterministicExceptRequestID(t *testing.T) {
 
 	var snap map[string]any
 	_ = json.Unmarshal(first, &snap)
-	inner := snap["request"].(map[string]any)
+	inner, ok := snap["request"].(map[string]any)
+	if !ok {
+		t.Fatalf("snapshot missing request object: %s", first)
+	}
 	for _, key := range []string{"contents", "sessionId", "toolConfig", "generationConfig", "systemInstruction", "tools"} {
 		if _, ok := inner[key]; !ok {
 			t.Fatalf("snapshot missing request.%s: %s", key, first)
