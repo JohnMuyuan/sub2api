@@ -558,6 +558,13 @@ urlFallbackLoop:
 					Kind:               "request_error",
 					Message:            safeErr,
 				})
+				// 下游（客户端或前置代理）已断开：这是请求结果而不是上游故障。
+				// 直接返回 ctx 错误，由上层按 499 client_disconnected 处理；
+				// 不写入请求级上游错误归因，也不进入重试/重试耗尽分支。
+				if p.ctx.Err() != nil {
+					logger.LegacyPrintf("service.antigravity_gateway", "%s status=context_canceled error=%v", p.prefix, p.ctx.Err())
+					return nil, p.ctx.Err()
+				}
 				if shouldAntigravityFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
 					logger.LegacyPrintf("service.antigravity_gateway", "%s URL fallback (connection error): %s -> %s", p.prefix, baseURL, availableURLs[urlIdx+1])
 					continue urlFallbackLoop

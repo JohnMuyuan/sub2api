@@ -192,3 +192,33 @@ func TestAntigravitySessionScope(t *testing.T) {
 	opts := (&AntigravityGatewayService{}).getClaudeTransformOptions(ctx)
 	require.Equal(t, "account:7|api_key:9", opts.SessionScope)
 }
+
+// 回归：下游断开（context canceled）时不应被记为请求级上游错误，也不应重试。
+func TestAntigravityRetryLoop_ClientCancelIsNotUpstreamFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	upstream := &queuedHTTPUpstreamStub{}
+	upstream.onCall = func(*http.Request, *queuedHTTPUpstreamStub) { cancel() }
+	upstream.errors = []error{fmt.Errorf("Post \"https://example.invalid\": %w", context.Canceled)}
+
+	svc := &AntigravityGatewayService{}
+	_, err := svc.antigravityRetryLoop(antigravityRetryLoopParams{
+		ctx:          ctx,
+		prefix:       "[test]",
+		account:      newHardeningAccount(),
+		accessToken:  "token",
+		action:       "streamGenerateContent",
+		body:         []byte(`{}`),
+		c:            c,
+		httpUpstream: upstream,
+		handleError: func(context.Context, string, *Account, int, http.Header, []byte, string, int64, string, bool) *handleModelRateLimitResult {
+			return nil
+		},
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, upstream.callCount)
+	_, attributed := c.Get(OpsUpstreamErrorMessageKey)
+	require.False(t, attributed, "client cancellation must not be attributed as a request-level upstream error")
+}
