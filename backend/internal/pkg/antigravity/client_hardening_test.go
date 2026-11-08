@@ -77,7 +77,10 @@ func TestNewClient_ReusesTransportPerProxy(t *testing.T) {
 	if a.httpClient.Transport == c.httpClient.Transport {
 		t.Fatal("different proxies must not share a Transport")
 	}
-	tr := a.httpClient.Transport.(*http.Transport)
+	tr, ok := a.httpClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("unexpected transport type %T", a.httpClient.Transport)
+	}
 	if tr.IdleConnTimeout <= 0 {
 		t.Fatal("proxy transport must have an idle timeout to avoid connection leaks")
 	}

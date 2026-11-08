@@ -336,7 +336,9 @@ var proxyTransports sync.Map // map[string]*http.Transport
 
 func proxyTransportFor(key string, parsed *url.URL) (*http.Transport, error) {
 	if cached, ok := proxyTransports.Load(key); ok {
-		return cached.(*http.Transport), nil
+		if transport, ok := cached.(*http.Transport); ok {
+			return transport, nil
+		}
 	}
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
@@ -350,10 +352,14 @@ func proxyTransportFor(key string, parsed *url.URL) (*http.Transport, error) {
 		return nil, fmt.Errorf("configure proxy: %w", err)
 	}
 	actual, loaded := proxyTransports.LoadOrStore(key, transport)
-	if loaded {
-		transport.CloseIdleConnections()
+	if !loaded {
+		return transport, nil
 	}
-	return actual.(*http.Transport), nil
+	if existing, ok := actual.(*http.Transport); ok {
+		transport.CloseIdleConnections()
+		return existing, nil
+	}
+	return transport, nil
 }
 
 // IsConnectionError 判断是否为连接错误（网络超时、DNS 失败、连接拒绝）
