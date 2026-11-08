@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
@@ -28,6 +29,23 @@ type ForbiddenError struct {
 
 func (e *ForbiddenError) Error() string {
 	return fmt.Sprintf("fetchAvailableModels 失败 (HTTP %d): %s", e.StatusCode, e.Body)
+}
+
+// TokenEndpointError 表示 Google OAuth token 端点返回了非 200 响应。
+// 保留状态码，便于调用方区分可重试（5xx/408/429）与确定性失败（其他 4xx）。
+type TokenEndpointError struct {
+	Op         string
+	StatusCode int
+	Body       string
+}
+
+func (e *TokenEndpointError) Error() string {
+	return fmt.Sprintf("%s (HTTP %d): %s", e.Op, e.StatusCode, e.Body)
+}
+
+// Retryable 报告该错误是否可能通过重试恢复。
+func (e *TokenEndpointError) Retryable() bool {
+	return e.StatusCode >= 500 || e.StatusCode == http.StatusRequestTimeout || e.StatusCode == http.StatusTooManyRequests
 }
 
 // NewAPIRequestWithURL 使用指定的 base URL 创建 Antigravity API 请求（v1internal 端点）
@@ -291,25 +309,51 @@ func NewClient(proxyURL string) (*Client, error) {
 		Timeout: clientTimeout,
 	}
 
-	_, parsed, err := proxyurl.Parse(proxyURL)
+	trimmed, parsed, err := proxyurl.Parse(proxyURL)
 	if err != nil {
 		return nil, err
 	}
 	if parsed != nil {
-		transport := &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout: proxyDialTimeout,
-			}).DialContext,
-			TLSHandshakeTimeout: proxyTLSHandshakeTimeout,
-		}
-		if err := proxyutil.ConfigureTransportProxy(transport, parsed); err != nil {
-			return nil, fmt.Errorf("configure proxy: %w", err)
+		transport, err := proxyTransportFor(trimmed, parsed)
+		if err != nil {
+			return nil, err
 		}
 		client.Transport = transport
 	}
 	return &Client{
 		httpClient: client,
 	}, nil
+}
+
+// proxyIdleConnTimeout 代理连接池中空闲连接的最长保留时间。
+const proxyIdleConnTimeout = 90 * time.Second
+
+// proxyTransports 按代理 URL 复用 Transport。
+// NewClient 在 token 刷新、配额查询、隐私设置等路径上被频繁调用；如果每次都新建
+// Transport 且不设置 IdleConnTimeout，空闲连接及其读写 goroutine 会永久驻留，
+// 造成连接与 goroutine 泄漏。复用同一 Transport 也让同一代理的请求共享连接池。
+var proxyTransports sync.Map // map[string]*http.Transport
+
+func proxyTransportFor(key string, parsed *url.URL) (*http.Transport, error) {
+	if cached, ok := proxyTransports.Load(key); ok {
+		return cached.(*http.Transport), nil
+	}
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: proxyDialTimeout,
+		}).DialContext,
+		TLSHandshakeTimeout: proxyTLSHandshakeTimeout,
+		IdleConnTimeout:     proxyIdleConnTimeout,
+		MaxIdleConnsPerHost: 4,
+	}
+	if err := proxyutil.ConfigureTransportProxy(transport, parsed); err != nil {
+		return nil, fmt.Errorf("configure proxy: %w", err)
+	}
+	actual, loaded := proxyTransports.LoadOrStore(key, transport)
+	if loaded {
+		transport.CloseIdleConnections()
+	}
+	return actual.(*http.Transport), nil
 }
 
 // IsConnectionError 判断是否为连接错误（网络超时、DNS 失败、连接拒绝）
@@ -422,7 +466,7 @@ func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (*TokenR
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("token 刷新失败 (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+		return nil, &TokenEndpointError{Op: "token 刷新失败", StatusCode: resp.StatusCode, Body: string(bodyBytes)}
 	}
 
 	var tokenResp TokenResponse
@@ -495,7 +539,7 @@ func (c *Client) LoadCodeAssist(ctx context.Context, accessToken string) (*LoadC
 		resp, err := servertiming.Do(c.httpClient, req)
 		if err != nil {
 			lastErr = fmt.Errorf("loadCodeAssist 请求失败: %w", err)
-			if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
+			if ctx.Err() == nil && shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
 				log.Printf("[antigravity] loadCodeAssist URL fallback: %s -> %s", baseURL, availableURLs[urlIdx+1])
 				continue
 			}
@@ -574,7 +618,7 @@ func (c *Client) OnboardUser(ctx context.Context, accessToken, tierID string) (s
 			resp, err := servertiming.Do(c.httpClient, req)
 			if err != nil {
 				lastErr = fmt.Errorf("onboardUser 请求失败: %w", err)
-				if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
+				if ctx.Err() == nil && shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
 					log.Printf("[antigravity] onboardUser URL fallback: %s -> %s", baseURL, availableURLs[urlIdx+1])
 					break
 				}
@@ -730,7 +774,7 @@ func (c *Client) fetchAvailableModels(ctx context.Context, availableURLs []strin
 		resp, err := servertiming.Do(fetchClient, req)
 		if err != nil {
 			lastErr = fmt.Errorf("fetchAvailableModels 请求失败: %w", err)
-			if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
+			if ctx.Err() == nil && shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
 				log.Printf("[antigravity] fetchAvailableModels URL fallback: %s -> %s", baseURL, availableURLs[urlIdx+1])
 				continue
 			}

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -176,7 +177,12 @@ func (s *AntigravityOAuthService) RefreshToken(ctx context.Context, refreshToken
 			if backoff > 30*time.Second {
 				backoff = 30 * time.Second
 			}
-			time.Sleep(backoff)
+			if err := sleepWithContext(ctx, backoff); err != nil {
+				if lastErr != nil {
+					return nil, fmt.Errorf("token 刷新已取消: %w (last error: %v)", err, lastErr)
+				}
+				return nil, err
+			}
 		}
 
 		client, err := antigravity.NewClient(proxyURL)
@@ -259,6 +265,12 @@ func (s *AntigravityOAuthService) ValidateRefreshToken(ctx context.Context, refr
 }
 
 func isNonRetryableAntigravityOAuthError(err error) bool {
+	// token 端点的确定性 4xx（如 400 invalid_request、401 unauthorized_client）重试没有意义，
+	// 只会重复向 Google 提交同一个失效凭据。
+	var tokenErr *antigravity.TokenEndpointError
+	if errors.As(err, &tokenErr) && !tokenErr.Retryable() {
+		return true
+	}
 	msg := err.Error()
 	nonRetryable := []string{
 		"invalid_grant",
@@ -344,7 +356,12 @@ func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, ac
 			if backoff > 8*time.Second {
 				backoff = 8 * time.Second
 			}
-			time.Sleep(backoff)
+			if err := sleepWithContext(ctx, backoff); err != nil {
+				if lastErr == nil {
+					lastErr = err
+				}
+				break
+			}
 		}
 
 		client, err := antigravity.NewClient(proxyURL)
@@ -372,8 +389,10 @@ func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, ac
 					Subscription: lastSubscription,
 				}, nil
 			} else if onboardErr != nil {
+				// OnboardUser 内部已带轮询（最多 5 次/端点）。外层再整体重试会把
+				// loadCodeAssist+onboardUser 放大到数十次请求，因此 onboarding 失败后直接结束。
 				lastErr = onboardErr
-				continue
+				break
 			}
 		}
 

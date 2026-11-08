@@ -1,43 +1,87 @@
 package antigravity
 
 import (
+	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/google/uuid"
 )
 
-var (
-	sessionRand      = rand.New(rand.NewSource(time.Now().UnixNano()))
-	sessionRandMutex sync.Mutex
-)
-
-// generateStableSessionID 基于用户消息内容生成稳定的 session ID
-func generateStableSessionID(contents []GeminiContent) string {
-	// 查找第一个 user 消息的文本
+// sessionIDSeed 返回首条 user 消息的确定性种子：优先拼接全部文本 part，
+// 没有文本时（如首条消息只有图片/工具结果）退化为 parts 的 JSON 序列化结果。
+// encoding/json 对 map 按 key 排序输出，因此相同输入始终得到相同种子。
+func sessionIDSeed(contents []GeminiContent) (string, bool) {
 	for _, content := range contents {
-		if content.Role == "user" && len(content.Parts) > 0 {
-			if text := content.Parts[0].Text; text != "" {
-				h := sha256.Sum256([]byte(text))
-				n := int64(binary.BigEndian.Uint64(h[:8])) & 0x7FFFFFFFFFFFFFFF
-				return "-" + strconv.FormatInt(n, 10)
+		if content.Role != "user" || len(content.Parts) == 0 {
+			continue
+		}
+		var texts []string
+		for _, part := range content.Parts {
+			if part.Text != "" && !part.Thought {
+				texts = append(texts, part.Text)
 			}
 		}
+		if len(texts) > 0 {
+			return strings.Join(texts, "\n"), true
+		}
+		if raw, err := json.Marshal(content.Parts); err == nil {
+			return string(raw), true
+		}
 	}
-	// 回退：生成随机 session ID
-	sessionRandMutex.Lock()
-	n := sessionRand.Int63n(9_000_000_000_000_000_000)
-	sessionRandMutex.Unlock()
+	return "", false
+}
+
+// hashSessionID 将种子映射为上游使用的 "-<正整数>" 形式 sessionId。
+// scope 为空时保持旧算法（仅对种子做 SHA-256），保证未配置作用域的调用方行为不变。
+func hashSessionID(scope, seed string) string {
+	input := seed
+	if scope != "" {
+		input = "sub2api-session-v2\x00" + scope + "\x00" + seed
+	}
+	h := sha256.Sum256([]byte(input))
+	n := int64(binary.BigEndian.Uint64(h[:8])) & 0x7FFFFFFFFFFFFFFF
 	return "-" + strconv.FormatInt(n, 10)
+}
+
+// randomSessionID 仅在请求中完全没有 user 内容时使用，保证不同请求不会共享会话。
+func randomSessionID() string {
+	var b [8]byte
+	if _, err := cryptorand.Read(b[:]); err != nil {
+		// crypto/rand 失败极罕见；退化为基于 UUID 的哈希，仍保证唯一性。
+		return hashSessionID("", uuid.NewString())
+	}
+	n := int64(binary.BigEndian.Uint64(b[:])) & 0x7FFFFFFFFFFFFFFF
+	return "-" + strconv.FormatInt(n, 10)
+}
+
+// generateStableSessionID 基于首条 user 消息内容生成稳定的 session ID。
+// scope 用于隔离不同下游用户/上游账号：相同开场白在不同作用域下得到不同 sessionId，
+// 避免不同用户的会话在上游被合并，也避免同一 sessionId 出现在多个 Google 账号上。
+func generateStableSessionID(contents []GeminiContent, scope string) string {
+	if seed, ok := sessionIDSeed(contents); ok {
+		return hashSessionID(scope, seed)
+	}
+	return randomSessionID()
+}
+
+// resolveSessionID 决定最终 sessionId。客户端提供 metadata.user_id 时，
+// 在作用域内对其做哈希，而不是把下游用户标识原样发送给上游。
+func resolveSessionID(contents []GeminiContent, metadataUserID, scope string) string {
+	if userID := strings.TrimSpace(metadataUserID); userID != "" {
+		if scope == "" {
+			// 无作用域时保持旧行为（原样透传），避免影响未接入作用域的调用方。
+			return userID
+		}
+		return hashSessionID(scope, "metadata.user_id\x00"+userID)
+	}
+	return generateStableSessionID(contents, scope)
 }
 
 type TransformOptions struct {
@@ -46,6 +90,9 @@ type TransformOptions struct {
 	// 为空时使用默认模板（包含 [IDENTITY_PATCH] 及 SYSTEM_PROMPT_BEGIN 标记）。
 	IdentityPatch string
 	EnableMCPXML  bool
+	// SessionScope 可选：会话作用域（通常由上游账号 ID + 下游 API Key ID 组成）。
+	// 非空时 sessionId 在该作用域内派生，且 metadata.user_id 不再原样透传给上游。
+	SessionScope string
 }
 
 func DefaultTransformOptions() TransformOptions {
@@ -147,9 +194,13 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 	// 5. 构建内部请求
 	innerRequest := GeminiRequest{
 		Contents: contents,
-		// 总是生成 sessionId，基于用户消息内容
-		SessionID: generateStableSessionID(contents),
 	}
+	metadataUserID := ""
+	if claudeReq.Metadata != nil {
+		metadataUserID = claudeReq.Metadata.UserID
+	}
+	// 总是生成 sessionId：优先 metadata.user_id，其次首条 user 消息内容
+	innerRequest.SessionID = resolveSessionID(contents, metadataUserID, opts.SessionScope)
 
 	// toolConfig must always be present: upstream rejects requests without it,
 	// including reasoning models called without any tools.
@@ -170,11 +221,6 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 	}
 	if len(tools) > 0 {
 		innerRequest.Tools = tools
-	}
-
-	// 如果提供了 metadata.user_id，优先使用
-	if claudeReq.Metadata != nil && claudeReq.Metadata.UserID != "" {
-		innerRequest.SessionID = claudeReq.Metadata.UserID
 	}
 
 	// 6. 包装为 v1internal 请求

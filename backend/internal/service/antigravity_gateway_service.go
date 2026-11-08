@@ -9,12 +9,14 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
@@ -36,9 +38,12 @@ const (
 
 	// MODEL_CAPACITY_EXHAUSTED 专用重试参数
 	// 模型容量不足时，所有账号共享同一容量池，切换账号无意义
-	// 使用固定 1s 间隔重试，最多重试 60 次
-	antigravityModelCapacityRetryMaxAttempts = 60
+	// 使用指数退避（1s 起，单次上限 8s），最多重试 6 次（累计等待约 31s）。
+	// 旧实现为固定 1s × 60 次：单个请求即可对同一账号产生 60 次上游调用，
+	// 并发时成倍放大，既浪费配额也会形成异常的高频请求模式。
+	antigravityModelCapacityRetryMaxAttempts = 6
 	antigravityModelCapacityRetryWait        = 1 * time.Second
+	antigravityModelCapacityRetryMaxWait     = 8 * time.Second
 
 	// Google RPC 状态和类型常量
 	googleRPCStatusResourceExhausted      = "RESOURCE_EXHAUSTED"
@@ -75,7 +80,46 @@ var antigravityPassthroughErrorMessages = []string{
 var (
 	modelCapacityExhaustedMu    sync.RWMutex
 	modelCapacityExhaustedUntil = make(map[string]time.Time) // modelName -> cooldown until
+	// modelCapacityRetryInFlight 标记某模型当前已有请求在执行容量重试循环。
+	// 其他并发请求直接返回上游 503，而不是各自再启动一轮重试。
+	modelCapacityRetryInFlight = make(map[string]struct{})
 )
+
+// acquireModelCapacityRetry 尝试成为某模型容量重试的唯一执行者。
+// 返回 false 表示该模型处于 cooldown 或已有其他请求在重试。
+func acquireModelCapacityRetry(modelName string, now time.Time) bool {
+	modelCapacityExhaustedMu.Lock()
+	defer modelCapacityExhaustedMu.Unlock()
+	if until, ok := modelCapacityExhaustedUntil[modelName]; ok && now.Before(until) {
+		return false
+	}
+	if _, busy := modelCapacityRetryInFlight[modelName]; busy {
+		return false
+	}
+	modelCapacityRetryInFlight[modelName] = struct{}{}
+	return true
+}
+
+// releaseModelCapacityRetry 结束容量重试；exhausted=true 时设置 cooldown，成功时清除 cooldown。
+func releaseModelCapacityRetry(modelName string, exhausted bool, now time.Time) {
+	modelCapacityExhaustedMu.Lock()
+	defer modelCapacityExhaustedMu.Unlock()
+	delete(modelCapacityRetryInFlight, modelName)
+	if exhausted {
+		modelCapacityExhaustedUntil[modelName] = now.Add(antigravityModelCapacityCooldown)
+	} else {
+		delete(modelCapacityExhaustedUntil, modelName)
+	}
+}
+
+// nextModelCapacityRetryWait 计算容量重试的下一次等待时间（翻倍，封顶）。
+func nextModelCapacityRetryWait(current time.Duration) time.Duration {
+	next := current * 2
+	if next > antigravityModelCapacityRetryMaxWait {
+		next = antigravityModelCapacityRetryMaxWait
+	}
+	return next
+}
 
 const (
 	antigravityForwardBaseURLEnv  = "GATEWAY_ANTIGRAVITY_FORWARD_BASE_URL"
@@ -548,12 +592,45 @@ func (s *AntigravityGatewayService) buildClaudeTestRequest(projectID, mappedMode
 
 func (s *AntigravityGatewayService) getClaudeTransformOptions(ctx context.Context) antigravity.TransformOptions {
 	opts := antigravity.DefaultTransformOptions()
+	opts.SessionScope = antigravitySessionScopeFromContext(ctx)
 	if s.settingService == nil {
 		return opts
 	}
 	opts.EnableIdentityPatch = s.settingService.IsIdentityPatchEnabled(ctx)
 	opts.IdentityPatch = s.settingService.GetIdentityPatchPrompt(ctx)
 	return opts
+}
+
+type antigravitySessionScopeKey struct{}
+
+// antigravitySessionScope 返回 sessionId 的派生作用域：上游账号 + 下游 API Key。
+// 同一下游用户在同一账号上的会话保持稳定；不同用户、不同账号之间互不复用 sessionId。
+func antigravitySessionScope(c *gin.Context, account *Account) string {
+	if account == nil {
+		return ""
+	}
+	scope := "account:" + strconv.FormatInt(account.ID, 10)
+	if c != nil {
+		if key := getAPIKeyFromContext(c); key != nil {
+			scope += "|api_key:" + strconv.FormatInt(key.ID, 10)
+		}
+	}
+	return scope
+}
+
+func withAntigravitySessionScope(ctx context.Context, scope string) context.Context {
+	if ctx == nil || scope == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, antigravitySessionScopeKey{}, scope)
+}
+
+func antigravitySessionScopeFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	scope, _ := ctx.Value(antigravitySessionScopeKey{}).(string)
+	return scope
 }
 
 // extractContentFromSSEResponse 从 SSE 流式响应中提取文本和内联图片

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 )
 
 const (
@@ -196,7 +198,8 @@ func (p *AntigravityTokenProvider) markTempUnschedulable(account *Account, refre
 	}
 	now := time.Now()
 	until := now.Add(tokenRefreshTempUnschedDuration)
-	reason := "token refresh failed on request path: " + refreshErr.Error()
+	// 原因会持久化到 DB 并展示在后台，与后台刷新服务一致做脱敏处理。
+	reason := "token refresh failed on request path: " + logredact.RedactText(refreshErr.Error())
 	bgCtx := context.Background()
 	if err := p.accountRepo.SetTempUnschedulable(bgCtx, account.ID, until, reason); err != nil {
 		slog.Warn("antigravity_token_provider.set_temp_unschedulable_failed",

@@ -245,6 +245,7 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		_ = s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
+	ctx = withAntigravitySessionScope(ctx, antigravitySessionScope(c, account))
 	geminiBody, err := s.buildAntigravityCompatGeminiBody(ctx, request.claudeBody, &claudeRequest, projectID, mappedModel)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request")
