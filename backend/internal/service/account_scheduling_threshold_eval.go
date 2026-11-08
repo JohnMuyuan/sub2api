@@ -86,7 +86,7 @@ func accountSchedulingThresholdPlatformCandidates(account *Account, platform str
 		return anthropicThresholdCandidates(account)
 	case PlatformGrok:
 		return grokThresholdCandidates(account)
-	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode:
+	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode, PlatformMistral:
 		return cnProviderThresholdCandidates(account, platform)
 	default:
 		return nil
@@ -378,6 +378,9 @@ func cnProviderThresholdCandidates(account *Account, provider string) []*account
 	if provider == PlatformCommandCode && !commandCodeWindowsBinding(account.Extra) {
 		return nil
 	}
+	if provider == PlatformMistral && !mistralWindowsBinding(account.Extra) {
+		return nil
+	}
 	candidates := []*accountSchedulingThresholdCandidate{
 		cnThresholdCandidate(account.Extra, provider, "5h"),
 		cnThresholdCandidate(account.Extra, provider, "weekly"),
@@ -388,9 +391,9 @@ func cnProviderThresholdCandidates(account *Account, provider string) []*account
 	return candidates
 }
 
-// cnQuotaHasMonthlyWindow 报告供应商的额度快照是否含月度窗口（OpenCode Go、Command Code）。
+// cnQuotaHasMonthlyWindow 报告供应商的额度快照是否含月度窗口（OpenCode Go、Command Code、Mistral）。
 func cnQuotaHasMonthlyWindow(provider string) bool {
-	return provider == PlatformOpenCodeGo || provider == PlatformCommandCode
+	return provider == PlatformOpenCodeGo || provider == PlatformCommandCode || provider == PlatformMistral
 }
 
 func cnThresholdCandidate(extra map[string]any, provider, window string) *accountSchedulingThresholdCandidate {

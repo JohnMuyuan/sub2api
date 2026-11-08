@@ -58,7 +58,8 @@ export const SCHEDULING_THRESHOLD_WINDOWS: Record<string, string[]> = {
   zhipu: ['5h', 'weekly'],
   minimax: ['5h', 'weekly'],
   opencode_go: ['5h', 'weekly', 'monthly'],
-  command_code: ['5h', 'weekly', 'monthly']
+  command_code: ['5h', 'weekly', 'monthly'],
+  mistral: ['5h', 'weekly', 'monthly']
 }
 
 export function isValidSchedulingThresholdWindowRule(rule: SchedulingThresholdWindowRule): boolean {

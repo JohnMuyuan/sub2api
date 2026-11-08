@@ -35,6 +35,7 @@ var AccountSchedulingThresholdPlatformWindows = map[string][]string{
 	PlatformMiniMax:     {"5h", "weekly"},
 	PlatformOpenCodeGo:  {"5h", "weekly", "monthly"},
 	PlatformCommandCode: {"5h", "weekly", "monthly"},
+	PlatformMistral:     {"5h", "weekly", "monthly"},
 }
 
 // AccountSchedulingThresholdWindowRule is one window's own rule.
