@@ -536,6 +536,7 @@ type OpenAIGatewayService struct {
 	stopAstraSetup          func()
 	codexWSAnchors          codexWSAnchorStore
 	priorityScheduling      prioritySchedulingState
+	priorityAnalysis        priorityAnalysisFlights
 	excelBPSRecoveryMu      sync.Mutex
 	excelBPSRecoveryCancel  context.CancelFunc
 	excelBPSRecoveryDone    chan struct{}
@@ -886,6 +887,7 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 // 应在应用优雅关闭时调用。
 func (s *OpenAIGatewayService) CloseOpenAIWSPool() {
 	if s != nil {
+		s.priorityAnalysis.close()
 		s.codexSnapshotMu.Lock()
 		s.codexSnapshotClosed = true
 		throttle := s.codexSnapshotThrottle
