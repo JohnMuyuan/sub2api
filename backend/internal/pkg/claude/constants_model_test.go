@@ -19,6 +19,16 @@ func TestDefaultModelsContainsClaudeFable51(t *testing.T) {
 	t.Fatal("claude-fable-5-1 missing from DefaultModels")
 }
 
+func TestDefaultModelsContainsClaudeFable52First(t *testing.T) {
+	t.Parallel()
+
+	require.NotEmpty(t, DefaultModels)
+	first := DefaultModels[0]
+	require.Equal(t, "claude-fable-5-2", first.ID)
+	require.Equal(t, "Claude Fable 5.2", first.DisplayName)
+	require.Equal(t, "2026-11-09T00:00:00Z", first.CreatedAt)
+}
+
 func TestDefaultModelsContainsOpus55(t *testing.T) {
 	for _, model := range DefaultModels {
 		if model.ID == "claude-opus-5-5" {

@@ -1896,6 +1896,27 @@ func TestGetModelPricing_Fable51FallbackPricing(t *testing.T) {
 	require.Empty(t, pricing.ReasoningEffortMultipliers)
 }
 
+func TestGetModelPricing_Fable52FallbackPricing(t *testing.T) {
+	svc := newTestBillingService()
+
+	for _, model := range []string{"claude-fable-5-2", "claude-fable-5-2[1m]", "anthropic.claude-fable-5-2"} {
+		pricing, err := svc.GetModelPricing(model)
+		require.NoError(t, err, model)
+		require.InDelta(t, 8e-6, pricing.InputPricePerToken, 1e-12, model)
+		require.InDelta(t, 40e-6, pricing.OutputPricePerToken, 1e-12, model)
+		require.InDelta(t, 10e-6, pricing.CacheCreation5mPrice, 1e-12, model)
+		require.InDelta(t, 16e-6, pricing.CacheCreation1hPrice, 1e-12, model)
+		require.InDelta(t, 0.2e-6, pricing.CacheReadPricePerToken, 1e-12, model)
+	}
+
+	// Version markers must not bleed into neighbouring versions.
+	require.False(t, isClaudeFable51Model("claude-fable-5-10"))
+	require.False(t, isClaudeFable52Model("claude-fable-5-20"))
+	pricing, err := svc.GetModelPricing("claude-fable-5-1")
+	require.NoError(t, err)
+	require.InDelta(t, 10e-6, pricing.InputPricePerToken, 1e-12)
+}
+
 func TestGetModelPricingWithChannel_CacheReadPriceAffectsPriority(t *testing.T) {
 	svc := newTestBillingService()
 
