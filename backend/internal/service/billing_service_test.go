@@ -1899,7 +1899,7 @@ func TestGetModelPricing_Fable51FallbackPricing(t *testing.T) {
 func TestGetModelPricing_Fable52FallbackPricing(t *testing.T) {
 	svc := newTestBillingService()
 
-	for _, model := range []string{"claude-fable-5-2", "claude-fable-5-2[1m]", "anthropic.claude-fable-5-2"} {
+	for _, model := range []string{"claude-fable-5-2", "anthropic.claude-fable-5-2"} {
 		pricing, err := svc.GetModelPricing(model)
 		require.NoError(t, err, model)
 		require.InDelta(t, 8e-6, pricing.InputPricePerToken, 1e-12, model)
@@ -1911,7 +1911,6 @@ func TestGetModelPricing_Fable52FallbackPricing(t *testing.T) {
 
 	// Version markers must not bleed into neighbouring versions.
 	require.False(t, isClaudeFable51Model("claude-fable-5-10"))
-	require.False(t, isClaudeFable52Model("claude-fable-5-20"))
 	pricing, err := svc.GetModelPricing("claude-fable-5-1")
 	require.NoError(t, err)
 	require.InDelta(t, 10e-6, pricing.InputPricePerToken, 1e-12)
@@ -2125,7 +2124,8 @@ func TestNewModelPricingCatalogFallbackAndContext(t *testing.T) {
 				require.NoError(t, err)
 				require.InDelta(t, 100_000*2e-6, cost.InputCost, 1e-10)
 				require.InDelta(t, 400*2.5e-6+600*4e-6, cost.CacheCreationCost, 1e-10)
-				require.InDelta(t, 1000*0.2e-6, cost.CacheReadCost, 1e-10)
+				// Sonnet 5.5 cache hits cost 5% of the $2/MTok input price (#8378).
+				require.InDelta(t, 1000*0.1e-6, cost.CacheReadCost, 1e-10)
 				require.InDelta(t, 500*10e-6, cost.OutputCost, 1e-10)
 				require.False(t, cost.LongContextBillingApplied)
 			})

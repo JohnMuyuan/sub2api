@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/cyberevidence"
@@ -714,6 +715,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	bodyReadDone()
 	if err != nil {
+		if middleware2.RejectRequestBodyReadError(c, err) {
+			return
+		}
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return
@@ -725,6 +729,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	if len(body) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
+		return
+	}
+
+	// Reject invalid UTF-8 before JSON transformation so malformed bytes do not
+	// become retryable upstream errors.
+	if !utf8.Valid(body) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body must be valid UTF-8 JSON. Send UTF-8 encoded bytes.")
 		return
 	}
 
@@ -771,6 +782,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	} else if changed {
 		body = cappedBody
+	}
+	if normalizedBody, changed := normalizeCodexPageContext(body); changed {
+		body = normalizedBody
+		reqLog.Info("openai.codex_page_context_normalized",
+			zap.String("normalization", "call_output_to_user_message"),
+		)
 	}
 	if normalizedBody, changed := normalizeCodexAutomationBootstrap(body); changed {
 		body = normalizedBody
@@ -983,8 +1000,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		// Select account supporting the requested model
 		reqLog.Debug("openai.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
+		// Managed authorization connections are filtered by the connection
+		// capability this route requires at send time, not by the abstract
+		// scheduler capability above.
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-			c.Request.Context(),
+			service.WithOpenAIConnectionCapabilityForRequest(c.Request.Context(), c),
 			apiKey.GroupID,
 			previousResponseID,
 			sessionHash,
@@ -1563,6 +1583,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	bodyReadDone()
 	if err != nil {
+		if middleware2.RejectRequestBodyReadError(c, err) {
+			return
+		}
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.anthropicErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return
@@ -2950,14 +2973,39 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			return
 		}
 		closeStatus, closeReason := summarizeWSCloseErrorForLog(err)
-		reqLog.Warn("openai.websocket_read_first_message_failed",
+		var localClose *service.OpenAIWSClientCloseError
+		closedByServer := errors.As(err, &localClose)
+		if closedByServer {
+			closeStatus = fmt.Sprintf("%d(%s)", int(localClose.StatusCode()), localClose.StatusCode().String())
+			closeReason = localClose.Reason()
+		}
+		reason := "read_error"
+		peerCloseStatus := coderws.CloseStatus(err)
+		peerDisconnected := errors.Is(err, io.EOF) || peerCloseStatus == coderws.StatusNormalClosure || peerCloseStatus == coderws.StatusGoingAway
+		switch {
+		case closedByServer && localClose.StatusCode() == coderws.StatusPolicyViolation && errors.Is(err, context.DeadlineExceeded):
+			reason = "first_message_timeout"
+		case peerDisconnected:
+			reason = "peer_disconnected"
+		case errors.Is(err, context.Canceled):
+			reason = "request_canceled"
+		}
+		fields := []zap.Field{
 			zap.Error(err),
 			zap.String("client_ip", clientIP),
 			zap.String("close_status", closeStatus),
 			zap.String("close_reason", closeReason),
 			zap.Duration("read_timeout", firstMessageTimeout),
-		)
-		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "missing first response.create message")
+			zap.String("reason", reason),
+		}
+		if reason == "peer_disconnected" || reason == "request_canceled" {
+			reqLog.Info("openai.websocket_read_first_message_failed", fields...)
+		} else {
+			reqLog.Warn("openai.websocket_read_first_message_failed", fields...)
+		}
+		if !closedByServer && peerCloseStatus == -1 && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "missing first response.create message")
+		}
 		return
 	}
 	firstTurnStartedAt := requesttiming.Now(ctx)
@@ -3343,6 +3391,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			requestPlatform,
 		)
 		if err != nil {
+			if h.handleOpenAIWSAgentRecoveryError(ctx, wsConn, err) {
+				return
+			}
 			if errors.Is(err, service.ErrPriorityLatencyUnavailable) {
 				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "latency scheduling temporarily unavailable; retry after 5 seconds")
 				return
@@ -4628,6 +4679,10 @@ func openAIForwardErrorAlreadyCommunicated(c *gin.Context, writerSizeBeforeForwa
 	if service.OpenAICompactKeepaliveAdjustedWrittenSize(c) == writerSizeBeforeForward ||
 		service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) == writerSizeBeforeForward {
 		return false
+	}
+	var incomplete *service.OpenAIWSSSEIncompleteError
+	if errors.As(err, &incomplete) && incomplete.ResponseWritten {
+		return true
 	}
 
 	// cyber_policy 命中时上游原始错误体已透传给客户端（非流式 c.Data 写出 400 body，

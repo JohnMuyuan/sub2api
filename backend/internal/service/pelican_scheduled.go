@@ -49,10 +49,14 @@ func (s *AccountTestService) RunPelicanBackground(ctx context.Context, accountID
 
 	}
 	started := time.Now()
+	directOAuth401, directOAuthRevoked401, nativeOAuthTransport := false, false, false
 	ctx = withPelicanTestOptions(ctx, pelicanTestOptions{
-		qualityBatch: cfg.QualityBatch,
-		testChannel:  cfg.TestChannel,
-		observeOnly:  cfg.Quality != nil && cfg.Quality.Action == QualityActionObserveOnly,
+		directOAuth401:        &directOAuth401,
+		directOAuthRevoked401: &directOAuthRevoked401,
+		nativeOAuthTransport:  &nativeOAuthTransport,
+		qualityBatch:          cfg.QualityBatch,
+		testChannel:           cfg.TestChannel,
+		observeOnly:           cfg.Quality != nil && cfg.Quality.Action == QualityActionObserveOnly,
 	})
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -83,7 +87,8 @@ func (s *AccountTestService) RunPelicanBackground(ctx context.Context, accountID
 	finished := time.Now()
 	snapshot := *cfg
 	snapshot.ModelID = model
-	return &ScheduledTestResult{Status: status, ResponseText: output, ErrorMessage: message, LatencyMs: finished.Sub(started).Milliseconds(), StartedAt: started, FinishedAt: finished, PelicanConfig: &snapshot}, nil
+	snapshot.ActualPrompt = intelligenceTestPrompt(cfg)
+	return &ScheduledTestResult{DirectOAuth401: directOAuth401, DirectOAuthRevoked401: directOAuthRevoked401, Status: status, ResponseText: output, ErrorMessage: message, LatencyMs: finished.Sub(started).Milliseconds(), StartedAt: started, FinishedAt: finished, PelicanConfig: &snapshot}, nil
 }
 
 func (s *ScheduledTestRunnerService) runPelicanPlan(ctx context.Context, plan *ScheduledTestPlan) bool {
@@ -107,6 +112,10 @@ func (s *ScheduledTestRunnerService) runPelicanPlan(ctx context.Context, plan *S
 	if plan.TriggerSource == quality5xxSource && plan.NextRunAt != nil && plan.NextRunAt.After(now) {
 		next = *plan.NextRunAt
 	}
+	roundTime := now
+	if plan.NextRunAt != nil {
+		roundTime = *plan.NextRunAt
+	}
 	// Persisted lease prevents duplicate execution across ticks and server replicas.
 	// It also recovers automatically after a process crash.
 	until := now.Add(15 * time.Minute).Truncate(time.Microsecond)
@@ -119,6 +128,9 @@ func (s *ScheduledTestRunnerService) runPelicanPlan(ctx context.Context, plan *S
 	}
 	// Result-only metadata must not mutate the stored rule or shared plan config.
 	snapshot := *plan.PelicanConfig
+	if snapshot.PromptMode == PelicanPromptModeRandom {
+		snapshot = *freezePelicanQuestion(plan.PelicanConfig, "scheduled:"+roundTime.UTC().Format(time.RFC3339Nano), nil)
+	}
 	snapshot.QualityRestoreDiagnostic = nil
 	plan.QualityRestoreDiagnostic = nil
 	snapshot.TriggerSource = plan.TriggerSource
@@ -296,6 +308,7 @@ func (s *ScheduledTestRunnerService) runPelicanPlan(ctx context.Context, plan *S
 		}
 	}
 	succeeded := false
+	allSaved := true
 	for _, result := range results {
 		result.QualityAction = qualityAction
 		if plan.PelicanConfig.Quality != nil {
@@ -316,7 +329,21 @@ func (s *ScheduledTestRunnerService) runPelicanPlan(ctx context.Context, plan *S
 			succeeded = true
 		}
 		if err := s.scheduledSvc.SaveResult(saveCtx, plan.ID, plan.MaxResults, result); err != nil {
+			allSaved = false
 			logger.LegacyPrintf("service.scheduled_test_runner", "pelican plan=%d save failed: %v", plan.ID, err)
+		}
+	}
+	if cleanup, ok := s.planRepo.(QualityOAuth401Repository); ok {
+		evidence := &QualityOAuth401Round{}
+		if allSaved {
+			evidence = QualityOAuth401Evidence(plan, results)
+		}
+		deleted, cleanupErr := cleanup.CompleteQualityOAuth401Round(saveCtx, plan, until, evidence)
+		if cleanupErr != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "quality OAuth 401 cleanup plan=%d account=%d failed", plan.ID, plan.AccountID)
+		}
+		if deleted {
+			return true // Native deletion cascaded results; do not write them again.
 		}
 	}
 	if succeeded && plan.AutoRecover && plan.PelicanConfig.Quality == nil && !isBuiltinCandyPlan(plan.PelicanConfig) && !isOpenAICodexStateProbePlan(plan.PelicanConfig) {
