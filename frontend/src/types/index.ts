@@ -802,6 +802,7 @@ export interface ApiKey {
   model_mapping?: Record<string, string>
   reasoning_effort?: string
   allow_long_context?: boolean
+  context_token_limit?: number
 }
 
 export interface ApiKeyConcurrencySnapshot {
@@ -1108,6 +1109,11 @@ export interface GeminiCredentials {
 
 export type TempUnschedulableScope = 'account' | 'model'
 
+// before_stream：仅流开始前的 HTTP 错误。
+// after_stream：流开始前和流开始后都可以，包括中途 502。
+// 省略时后端保持旧行为：中途 401/403/429/503/529 仍可触发，中途 502 不触发。
+export type TempUnschedulableStreamTiming = 'before_stream' | 'after_stream'
+
 export interface TempUnschedulableRule {
   error_code: number
   keywords: string[]
@@ -1115,6 +1121,13 @@ export interface TempUnschedulableRule {
   description: string
   // 作用范围：account 暂停整个账号，model 只冷却本次请求的模型；缺省时 401 按 account、其余按 model 处理。
   scope?: TempUnschedulableScope
+  // credentials JSON 键 stream_timing。
+  stream_timing?: TempUnschedulableStreamTiming
+  // credentials JSON 键 trigger_count。省略或小于 1 时按 1 次处理。
+  trigger_count?: number
+  // credentials JSON 键 trigger_window_minutes。从第一次匹配起累计次数的时间窗口。
+  // 与 duration_minutes 相互独立。省略或小于 1 时按 1 分钟处理。
+  trigger_window_minutes?: number
 }
 
 export interface TempUnschedulableState {
@@ -1410,6 +1423,7 @@ export interface GrokModelDiagnostics {
 }
 
 export interface Account {
+  moderation_scope_eligible?: boolean
   upstream_channel_binding?: import('@/api/admin/upstreamChannels').ChannelBinding
  excel_bps_credential_state?: ExcelBPSCredentialState
   id: number
@@ -1779,6 +1793,8 @@ export interface OpenAIResponsesState {
 }
 
 export interface CreateAccountRequest {
+  provider_id?: number
+  provider_key_id?: string
   upstream_channel_id?: number
   confirm_upstream_channel_binding?: boolean
   name: string
@@ -2480,6 +2496,7 @@ export interface UserErrorRequest {
 }
 
 export interface UserErrorRequestDetail extends UserErrorRequest {
+  reset_reason?: string
   error_body: string
   upstream_status_code?: number
 }
@@ -2766,6 +2783,8 @@ export interface QualityBPSPolicy {
   models: string[]
   omit_unsupported_tools: boolean
   ignore_encrypted_content: boolean
+  web_search?: boolean
+  web_search_auto?: boolean
   auto_disable_on_403: boolean
   auto_recover_on_403?: boolean
   recovery_interval_minutes?: number

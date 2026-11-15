@@ -76,6 +76,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/admin/operations/__tests__/QualityProbeSchedule.spec.ts \
 	src/components/admin/operations/__tests__/SmartOpsNav.spec.ts \
 	src/components/layout/__tests__/AppSidebar.spec.ts \
+	src/components/layout/__tests__/AppHeader.spec.ts \
 	src/components/account/__tests__/CreateAccountModal.autoBPS.spec.ts \
 	src/components/account/__tests__/EditAccountModal.autoBPS.spec.ts \
 	src/stores/__tests__/accountQuality.spec.ts \
@@ -99,6 +100,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/utils/__tests__/usageTps.spec.ts \
 	src/utils/__tests__/usageCacheRate.spec.ts \
 	src/utils/__tests__/usageRate.spec.ts \
+	src/components/charts/__tests__/TokenUsageTrend.spec.ts \
 	src/views/admin/ops/components/__tests__/OpsErrorDetailModal.spec.ts \
 	src/router/__tests__/feature-access.spec.ts \
 	src/api/admin/__tests__/requestCaptures.spec.ts \

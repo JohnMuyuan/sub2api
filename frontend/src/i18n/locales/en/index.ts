@@ -1,3 +1,6 @@
+import coupon from './coupon'
+import qqbot from './qqbot'
+import matureProviders from './matureProviders'
 import autoCredit from './autoCredit'
 import accountPerformance from './accountPerformance'
 import apiKeyModelPolicy from './apiKeyModelPolicy'
@@ -43,6 +46,9 @@ import accountViewer from './accountViewer'
 
 export default {
   accountViewer,
+  coupon,
+  ...qqbot,
+  matureProviders,
   apiKeyModelPolicy,
   autoCredit,
   accountPerformance,

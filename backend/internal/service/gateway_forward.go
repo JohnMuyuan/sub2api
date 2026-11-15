@@ -93,6 +93,10 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 // Forward 转发请求到Claude API
 func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (result *ForwardResult, err error) {
 	defer func() { err = protectClaudeReplay(c, err) }()
+	if err := CheckUpstreamModeration(ctx, c, account); err != nil {
+		return nil, err
+	}
+
 	startTime := time.Now()
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
@@ -414,6 +418,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
 			})
 		}
+		if isAnthropicRequestTooLarge(account, resp) {
+			return handleAnthropicRequestTooLarge(c, resp)
+		}
 
 		// 优先检测thinking block签名错误（400）并重试一次
 		if resp.StatusCode == 400 {
@@ -469,6 +476,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						retryResp, retryErr := s.doClaudeRequest(c, account, retryReq, proxyURL, tlsProfile)
 						s.rateLimitService.observeQualityResponse(retryReq.Context(), account, retryResp, retryErr)
 						if retryErr == nil {
+							if isAnthropicRequestTooLarge(account, retryResp) {
+								return handleAnthropicRequestTooLarge(c, retryResp)
+							}
 							if retryResp.StatusCode < 400 {
 								// 重试请求被上游接受后同步 ParsedRequest，保证 usage/日志看到真实请求体。
 								lastWireBody = retryWireBody
@@ -675,6 +685,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			}
 		}
 		break
+	}
+	// A signature/budget repair above can also receive 413. Stop before the
+	// retry-exhausted and account-policy paths, regardless of custom error codes.
+	if isAnthropicRequestTooLarge(account, resp) {
+		return handleAnthropicRequestTooLarge(c, resp)
 	}
 	if resp == nil || resp.Body == nil {
 		return nil, errors.New("upstream request failed: empty response")
@@ -1023,9 +1038,32 @@ func (s *GatewayService) isStickyAccountUpstreamRestricted(ctx context.Context, 
 	return s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel)
 }
 
+// anthropicStreamErrorStatus 把 Claude SSE error.type 映射到临时不可调度规则使用的状态码。
+// 无法识别的类型返回 0，避免用臆造状态码误匹配规则。
+func anthropicStreamErrorStatus(body []byte) int {
+	switch strings.TrimSpace(gjson.GetBytes(body, "error.type").String()) {
+	case "overloaded_error":
+		return 529
+	case "rate_limit_error":
+		return http.StatusTooManyRequests
+	case "authentication_error":
+		return http.StatusUnauthorized
+	case "permission_error":
+		return http.StatusForbidden
+	case "api_error":
+		return http.StatusInternalServerError
+	case "timeout_error":
+		return http.StatusGatewayTimeout
+	default:
+		return 0
+	}
+}
+
 // sseStreamErrorEventFailover 把上游 HTTP 200 + SSE 流体内的 event:error 帧转为
 // UpstreamFailoverError：尚未向客户端写出内容且错误类型为 overloaded_error 时按 529
 // 处理并触发账号侧副作用，其余按 403；同时登记 stream_error 运维记录。
+// 客户端已经开始收到内容后，默认不触发临时不可调度；只有 stream_timing=after_stream
+// 的规则可以按上面的语义状态码匹配。
 func (s *GatewayService) sseStreamErrorEventFailover(ctx context.Context, c *gin.Context, account *Account, resp *http.Response, rawData, model string, outputStarted bool) *UpstreamFailoverError {
 	body := []byte(rawData)
 	semanticStatus := http.StatusForbidden
@@ -1037,6 +1075,11 @@ func (s *GatewayService) sseStreamErrorEventFailover(ctx context.Context, c *gin
 			Body:       io.NopCloser(bytes.NewReader(body)),
 		}
 		s.handleFailoverSideEffects(ctx, syntheticResp, account, model)
+	} else if outputStarted && s != nil && s.rateLimitService != nil && account != nil {
+		if status := anthropicStreamErrorStatus(body); status > 0 {
+			phaseCtx := withTempUnschedStreamPhase(ctx, tempUnschedPhaseMidStreamOptIn)
+			_ = s.rateLimitService.attemptTempUnschedulable(phaseCtx, account, status, body, model)
+		}
 	}
 
 	upstreamMsg := sanitizeUpstreamErrorMessage(

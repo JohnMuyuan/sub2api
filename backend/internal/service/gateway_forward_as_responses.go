@@ -36,6 +36,10 @@ func (s *GatewayService) ForwardAsResponses(
 	parsed *ParsedRequest,
 ) (forwardResult *ForwardResult, forwardErr error) {
 	defer func() { forwardErr = protectClaudeReplay(c, forwardErr) }()
+	if err := CheckUpstreamModeration(ctx, c, account); err != nil {
+		return nil, err
+	}
+
 	startTime := time.Now()
 
 	normalizedBody, normalized, err := normalizeOpenAIResponsesLegacyIngressWithConfig(s.cfg, body)

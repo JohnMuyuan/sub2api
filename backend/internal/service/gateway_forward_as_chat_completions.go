@@ -34,6 +34,10 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	parsed *ParsedRequest,
 ) (forwardResult *ForwardResult, forwardErr error) {
 	defer func() { forwardErr = protectClaudeReplay(c, forwardErr) }()
+	if err := CheckUpstreamModeration(ctx, c, account); err != nil {
+		return nil, err
+	}
+
 	startTime := time.Now()
 
 	// 1. Parse Chat Completions request
