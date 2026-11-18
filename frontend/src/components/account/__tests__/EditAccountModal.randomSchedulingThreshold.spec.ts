@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { enableAutoUnmount, mount } from '@vue/test-utils'
@@ -63,9 +64,12 @@ function buildAccount(credentials: Record<string, unknown> = {}) {
 }
 
 function mountModal(account = buildAccount()) {
+  const pinia = createPinia()
+  setActivePinia(pinia)
   return mount(EditAccountModal, {
     props: { show: true, account, proxies: [], groups: [] },
     global: {
+      plugins: [pinia],
       stubs: {
         BaseDialog: BaseDialogStub,
         Select: true,
