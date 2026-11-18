@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
@@ -225,7 +226,62 @@ func applyOpenAICodexProbeHeaders(h http.Header) {
 		return
 	}
 	ensureCodexIdentityHeaders(h)
-	h.Set("X-Codex-Window-ID", uuid.NewString())
+	ensureCodexWindowIDHeader(h)
+}
+
+// ensureCodexWindowIDHeader populates x-codex-window-id in official Codex
+// "{thread_id}:0" form when absent.
+func ensureCodexWindowIDHeader(h http.Header) {
+	if h == nil || strings.TrimSpace(h.Get("X-Codex-Window-ID")) != "" {
+		return
+	}
+	threadID := strings.TrimSpace(h.Get("thread-id"))
+	if threadID == "" {
+		threadID = strings.TrimSpace(h.Get("session-id"))
+	}
+	if threadID == "" {
+		threadID = uuid.NewString()
+	}
+	h.Set("X-Codex-Window-ID", threadID+":0")
+}
+
+// applyOpenAICodexOAuthProbeHeaders aligns synthetic OAuth probe, account test,
+// and usage/image test HTTP requests with official Codex CLI headers: no legacy
+// OpenAI-Beta header, session x-codex-beta-features, coherent session/thread/
+// request/window IDs, optional fingerprint convergence, and canonical UA/Version.
+func applyOpenAICodexOAuthProbeHeaders(
+	c *gin.Context,
+	req *http.Request,
+	fingerprintAccount *Account,
+	credentialAccount *Account,
+	sessionSeed string,
+	cachedUserAgent string,
+) {
+	if req == nil || credentialAccount == nil {
+		return
+	}
+	req.Host = "chatgpt.com"
+	req.Header.Del("OpenAI-Beta")
+	applyOpenAICodexBetaFeatures(c, credentialAccount, req.Header)
+	setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
+	if sessionSeed != "" && strings.TrimSpace(req.Header.Get("session-id")) == "" {
+		req.Header.Set("session-id", sessionSeed)
+	}
+	fpTarget := fingerprintAccount
+	if fpTarget == nil {
+		fpTarget = credentialAccount
+	}
+	if fpIDs := resolveCodexFingerprintIDsFromRequest(fpTarget, req.Header); fpIDs != nil {
+		applyCodexFingerprintHeaders(req.Header, fpIDs)
+	}
+	applyCodexSessionHeaders(req.Header, "")
+	if customUA := strings.TrimSpace(credentialAccount.GetOpenAIUserAgent()); customUA != "" {
+		req.Header.Set("User-Agent", customUA)
+	} else if ua := strings.TrimSpace(cachedUserAgent); ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	applyOpenAICodexProbeHeaders(req.Header)
+	enforceCodexIdentityHeadersWithUA(req.Header, credentialAccount.GetOpenAIUserAgent())
 }
 
 // enforceCodexIdentityHeaders 收口 OAuth（ChatGPT 内部接口）出站请求的客户端身份头。

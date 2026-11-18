@@ -161,6 +161,9 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		applyStagedCodexFingerprintHeaders(c, account, headers)
 		if account != nil && account.UsesOpenAICodexProtocol() {
 			applyCodexSessionHeaders(headers, upstreamSessionID)
+			if !isCodexCLI {
+				ensureCodexWindowIDHeader(headers)
+			}
 		}
 	}
 

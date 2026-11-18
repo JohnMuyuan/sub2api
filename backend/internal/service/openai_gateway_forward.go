@@ -2122,8 +2122,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		return nil, err
 	}
 	upstreamSessionID := ""
+	compatMessagesBridge := false
 	if account.UsesOpenAICodexProtocol() {
-		compatMessagesBridge := isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
+		compatMessagesBridge = isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
 		// 清除客户端透传的 session 头，后续用隔离后的值重新设置，防止跨用户会话碰撞。
 		req.Header.Del("conversation_id")
 		req.Header.Del("session_id")
@@ -2190,6 +2191,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		applyStagedCodexFingerprintHeaders(c, account, req.Header)
 		if account.UsesOpenAICodexProtocol() {
 			applyCodexSessionHeaders(req.Header, upstreamSessionID)
+			if !isCodexCLI && !compatMessagesBridge && !isOpenAIResponsesCompactPath(c) {
+				ensureCodexWindowIDHeader(req.Header)
+			}
 		}
 	}
 

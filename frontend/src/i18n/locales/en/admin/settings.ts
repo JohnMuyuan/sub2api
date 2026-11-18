@@ -746,7 +746,7 @@ export default {
         antigravityUserAgentVersionPlaceholder: '1.23.2',
         antigravityUserAgentVersionHint: 'Leave empty to use ANTIGRAVITY_USER_AGENT_VERSION or the built-in default 1.23.2; when set, the admin setting takes precedence.',
         openaiCodexUserAgent: 'OpenAI Codex UA',
-        openaiCodexUserAgentPlaceholder: 'codex_cli_rs/0.146.1 (Ubuntu 22.4.0; x86_64) WindowsTerminal',
+        openaiCodexUserAgentPlaceholder: 'codex_cli_rs/0.169.1 (Ubuntu 22.4.0; x86_64) WindowsTerminal',
         openaiCodexUserAgentHint: 'The full Codex User-Agent used for all outbound requests, for customizing the OS / arch / terminal fingerprint. Leave empty to build the standard codex_cli_rs identity from the version below (recommended). If set, both the leading and trailing version declarations are synchronized to the version below, so the UA never stays pinned to the release entered here — upstream identity and version risk controls may return server_is_overloaded for stale or non-official identities.',
         openaiCodexClientVersion: 'Codex client version',
         openaiCodexClientVersionPlaceholder: 'Leave empty to follow auto-sync',

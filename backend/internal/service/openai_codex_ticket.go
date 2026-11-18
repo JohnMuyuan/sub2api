@@ -28,7 +28,7 @@ import (
 const (
 	openAICodexTicketExtraKeyPrefix  = "codex_turn_ticket:"
 	OpenAICodexSkipHarvestExtraKey   = "codex_skip_harvest"
-	openAICodexAstraMinVersion       = "0.153.4"
+	openAICodexAstraMinVersion       = "0.166.0"
 	openAICodexTicketStatePrefix     = "gAAAAA"
 	openAICodexTicketDefaultModel    = "gpt-6-astra"
 	openAICodexTicketDefaultSolModel = "gpt-5.6-sol"

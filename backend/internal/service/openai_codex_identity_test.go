@@ -2,6 +2,8 @@ package service
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -15,7 +17,7 @@ func requireOpenAICodexProbeHeaders(t *testing.T, h http.Header) {
 	require.Equal(t, openai.CodexDefaultOriginator, h.Get("Originator"))
 	require.Equal(t, codexCLIVersion, h.Get("Version"))
 	require.Empty(t, h.Values("OpenAI-Beta"), "官方 Codex HTTP 请求不带 OpenAI-Beta")
-	require.NotEmpty(t, h.Get("X-Codex-Window-ID"))
+	require.True(t, strings.HasSuffix(h.Get("X-Codex-Window-ID"), ":0"), "window_id=%q", h.Get("X-Codex-Window-ID"))
 }
 
 // 强制统一出口：无论客户端自报什么身份，OAuth 出站的 User-Agent / originator / version
@@ -345,4 +347,28 @@ func TestCodexCanonicalUserAgentFallsBackWithoutResolver(t *testing.T) {
 
 	require.Equal(t, codexCLIUserAgent, CodexCanonicalUserAgent())
 	require.Equal(t, codexCLIVersion, CodexCanonicalClientVersion())
+}
+
+func TestApplyOpenAICodexOAuthProbeHeadersMatchesCodexCLI(t *testing.T) {
+	require.Equal(t, "0.169.1", codexCLIVersion)
+	require.Equal(t, "0.166.0", openAICodexAstraMinVersion)
+
+	req := httptest.NewRequest(http.MethodPost, chatgptCodexAPIURL, nil)
+	req.Header.Set("OpenAI-Beta", "responses=experimental")
+	account := &Account{
+		ID:          77,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"chatgpt_account_id": "acct-77"},
+	}
+	seed := compactProbeSessionID(account.ID)
+	applyOpenAICodexOAuthProbeHeaders(nil, req, account, account, seed, "")
+
+	requireOpenAICodexProbeHeaders(t, req.Header)
+	require.Equal(t, openAIRemoteCompactionV2Feature, req.Header.Get("x-codex-beta-features"))
+	require.Equal(t, seed, req.Header.Get("session-id"))
+	require.Equal(t, seed, req.Header.Get("thread-id"))
+	require.Equal(t, seed, req.Header.Get("x-client-request-id"))
+	require.Equal(t, seed+":0", req.Header.Get("X-Codex-Window-ID"))
+	require.Equal(t, "acct-77", req.Header.Get("ChatGPT-Account-ID"))
 }
