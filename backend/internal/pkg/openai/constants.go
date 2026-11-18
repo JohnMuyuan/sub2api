@@ -32,9 +32,9 @@ var DefaultModels = []Model{
 	{ID: "gpt-6-luna", Object: "model", Created: 1790035200, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6 Luna"},
 	{ID: "gpt-6-astra", Object: "model", Created: 1788480000, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6 Astra"},
 	// Created records the local catalog addition date, not an upstream release date.
-	{ID: "gpt-6.2-astra", Object: "model", Created: 1794787200, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6.2 Astra", ReasoningEfforts: []string{"low", "medium", "high", "xhigh", "max"}},
-	{ID: "gpt-6.2-astra-pro", Object: "model", Created: 1794787200, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6.2 Astra Pro", ReasoningEfforts: []string{"low", "medium", "high", "xhigh", "max"}},
-	{ID: "gpt-6.2-sol", Object: "model", Created: 1794787200, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6.2 Sol", ReasoningEfforts: []string{"low", "medium", "high", "xhigh", "max"}},
+	{ID: "gpt-6.2-astra", Object: "model", Created: 1794787200, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6.2 Astra", ReasoningEfforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
+	{ID: "gpt-6.2-astra-pro", Object: "model", Created: 1794787200, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6.2 Astra Pro", ReasoningEfforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
+	{ID: "gpt-6.2-sol", Object: "model", Created: 1794787200, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6.2 Sol", ReasoningEfforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
 	{ID: "codex-auto-review", Object: "model", Created: 1776902400, OwnedBy: "openai", Type: "model", DisplayName: "Codex Auto Review"},
 	{ID: "gpt-image-2", Object: "model", Created: 1738368000, OwnedBy: "openai", Type: "model", DisplayName: "GPT Image 2"},
 	{ID: "gpt-image-2.5-flare", Object: "model", Created: 1788825600, OwnedBy: "openai", Type: "model", DisplayName: "GPT Image 2.5 Flare"},
@@ -88,6 +88,15 @@ var instructionsGPT6Astra string
 //go:embed codex_gpt61_sol.json
 var CodexGPT61SolMetadata []byte
 
+// CodexGPT62SolMetadata and CodexGPT62AstraMetadata are the official descriptors
+// from openai/codex rust-v0.169.1, codex-rs/models-manager/models.json.
+//
+//go:embed codex_gpt62_sol.json
+var CodexGPT62SolMetadata []byte
+
+//go:embed codex_gpt62_astra.json
+var CodexGPT62AstraMetadata []byte
+
 // latestCodexInstructions 返回当前已知最新版本的 Codex base instructions，
 // 当前为 GPT-5.5；若 5.5 prompt 意外为空则回退到 DefaultInstructions 保证非空。
 func latestCodexInstructions() string {
@@ -138,7 +147,60 @@ func CanonicalizeOpenAIModelAliasSpelling(model string) string {
 	return normalized
 }
 
+func codexInstructionsFromMetadata(raw []byte) string {
+	var metadata struct {
+		ModelMessages struct {
+			InstructionsTemplate string `json:"instructions_template"`
+		} `json:"model_messages"`
+	}
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		panic(err)
+	}
+	return metadata.ModelMessages.InstructionsTemplate
+}
+
+// IsCodexDateSuffix reports whether suffix is a YYYY-MM-DD snapshot date.
+func IsCodexDateSuffix(suffix string) bool {
+	parts := strings.Split(suffix, "-")
+	if len(parts) != 3 || len(parts[0]) != 4 || len(parts[1]) != 2 || len(parts[2]) != 2 {
+		return false
+	}
+	for _, part := range parts {
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// NormalizeGPT62Model returns the canonical base slug for the three GPT-6.2
+// models (gpt-6.2-astra-pro, gpt-6.2-astra, gpt-6.2-sol) while preserving Pro
+// separately and ignoring unrelated spellings.
+func NormalizeGPT62Model(model string) string {
+	canonical := CanonicalizeOpenAIModelAliasSpelling(model)
+	for _, base := range []string{"gpt-6.2-astra-pro", "gpt-6.2-astra", "gpt-6.2-sol"} {
+		if canonical == base {
+			return base
+		}
+		if suffix, ok := strings.CutPrefix(canonical, base+"-"); ok {
+			switch suffix {
+			case "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "openai-compact":
+				return base
+			default:
+				if IsCodexDateSuffix(suffix) {
+					return base
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // CodexBaseInstructionsForModel 按模型返回最匹配的真实 Codex base instructions：
+//   - gpt-6.2-sol / gpt-6.2-astra* → GPT-6.2 Codex instructions_template (rust-v0.169.1)
+//   - gpt-6.1-sol → GPT-6.1 Sol instructions_template
 //   - gpt-6 / gpt-6-astra（含供应商前缀与日期变体）→ GPT-6 Astra prompt
 //   - 含 "codex" 的模型（gpt-5-codex / gpt-5.x-codex / codex-max / spark 等）→ GPT-5-Codex prompt
 //   - gpt-5.5 系非 codex 模型 → GPT-5.5 prompt
@@ -149,17 +211,15 @@ func CanonicalizeOpenAIModelAliasSpelling(model string) string {
 // 任一专用 prompt 意外为空时回退链最终落到 DefaultInstructions，保证返回非空。
 func CodexBaseInstructionsForModel(model string) string {
 	canonical := CanonicalizeOpenAIModelAliasSpelling(model)
+	if base62 := NormalizeGPT62Model(canonical); base62 != "" {
+		if base62 == "gpt-6.2-sol" {
+			return codexInstructionsFromMetadata(CodexGPT62SolMetadata)
+		}
+		return codexInstructionsFromMetadata(CodexGPT62AstraMetadata)
+	}
 	switch {
 	case IsGPT61SolModelSpelling(canonical):
-		var metadata struct {
-			ModelMessages struct {
-				InstructionsTemplate string `json:"instructions_template"`
-			} `json:"model_messages"`
-		}
-		if err := json.Unmarshal(CodexGPT61SolMetadata, &metadata); err != nil {
-			panic(err)
-		}
-		return metadata.ModelMessages.InstructionsTemplate
+		return codexInstructionsFromMetadata(CodexGPT61SolMetadata)
 	case canonical == "gpt-6" || canonical == "gpt-6-astra" || strings.HasPrefix(canonical, "gpt-6-astra-"):
 		if v := strings.TrimSpace(instructionsGPT6Astra); v != "" {
 			return instructionsGPT6Astra

@@ -1424,6 +1424,24 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         max: {}
       }
     },
+    'gpt-6.2-astra': {
+      name: 'GPT-6.2 Astra',
+      limit: { context: 872000, output: 128000 },
+      options: { store: false },
+      variants: { low: {}, medium: {}, high: {}, xhigh: {}, max: {}, ultra: {} }
+    },
+    'gpt-6.2-astra-pro': {
+      name: 'GPT-6.2 Astra Pro',
+      limit: { context: 872000, output: 128000 },
+      options: { store: false },
+      variants: { low: {}, medium: {}, high: {}, xhigh: {}, max: {}, ultra: {} }
+    },
+    'gpt-6.2-sol': {
+      name: 'GPT-6.2 Sol',
+      limit: { context: 872000, output: 128000 },
+      options: { store: false },
+      variants: { low: {}, medium: {}, high: {}, xhigh: {}, max: {}, ultra: {} }
+    },
     'gpt-6-astra': {
       name: 'GPT-6 Astra',
       limit: {

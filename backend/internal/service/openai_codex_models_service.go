@@ -558,7 +558,20 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		}
 	}
 
-	if openai.IsGPT61SolModelSpelling(modelID) {
+	if base62 := normalizeOpenAIGPT62Model(modelID); base62 != "" {
+		rawMetadata := openai.CodexGPT62AstraMetadata
+		if base62 == "gpt-6.2-sol" {
+			rawMetadata = openai.CodexGPT62SolMetadata
+		}
+		if err := json.Unmarshal(rawMetadata, &descriptor); err != nil {
+			panic(err)
+		}
+		descriptor.Slug = modelID
+		if base62 == "gpt-6.2-astra-pro" {
+			descriptor.DisplayName = "GPT-6.2-Astra-Pro"
+		}
+		descriptor.officialMetadata = rawMetadata
+	} else if openai.IsGPT61SolModelSpelling(modelID) {
 		if err := json.Unmarshal(openai.CodexGPT61SolMetadata, &descriptor); err != nil {
 			panic(err)
 		}
@@ -667,7 +680,7 @@ func configuredCodexGPTReasoningLevels(modelID string) []configuredCodexReasonin
 			Description: "Maximum reasoning depth for complex tasks",
 		})
 	}
-	if isOpenAIGPT6AstraModel(modelID) || openai.IsGPT61SolModelSpelling(modelID) || normalized == "gpt-5.6-sol" || normalized == "gpt-5.6-terra" {
+	if isOpenAIGPT6AstraModel(modelID) || openai.IsGPT61SolModelSpelling(modelID) || normalizeOpenAIGPT62Model(modelID) != "" || normalized == "gpt-5.6-sol" || normalized == "gpt-5.6-terra" {
 		levels = append(levels, configuredCodexReasoningLevel{
 			Effort:      "ultra",
 			Description: "Maximum reasoning with automatic task delegation",
@@ -2195,11 +2208,14 @@ func CodexModelsManifestETag(body []byte) string {
 }
 
 var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
-	"gpt-6.1-sol":   {},
-	"gpt-6-astra":   {},
-	"gpt-5.6-sol":   {},
-	"gpt-5.6-terra": {},
-	"gpt-5.6-luna":  {},
+	"gpt-6.2-astra":     {},
+	"gpt-6.2-astra-pro": {},
+	"gpt-6.2-sol":       {},
+	"gpt-6.1-sol":       {},
+	"gpt-6-astra":       {},
+	"gpt-5.6-sol":       {},
+	"gpt-5.6-terra":     {},
+	"gpt-5.6-luna":      {},
 }
 
 // adjustAPIKeyCodexModelsManifest prevents Codex from selecting Responses
@@ -2230,7 +2246,9 @@ func adjustAPIKeyCodexModelsManifest(body []byte, account *Account) ([]byte, err
 		if account != nil {
 			target = account.GetMappedModel(slug)
 		}
-		if isOpenAIGPT6AstraModel(target) {
+		if base62 := normalizeOpenAIGPT62Model(target); base62 != "" {
+			target = base62
+		} else if isOpenAIGPT6AstraModel(target) {
 			target = "gpt-6-astra"
 		} else if openai.IsGPT61SolModelSpelling(target) {
 			target = "gpt-6.1-sol"

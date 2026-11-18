@@ -1,10 +1,13 @@
 package service
 
 import (
+	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +18,13 @@ func TestGPT62ModelIdentityAndReasoning(t *testing.T) {
 			alias := "openai/" + model + suffix
 			require.Equal(t, model, normalizeOpenAIGPT62Model(alias))
 			require.Equal(t, model, normalizeCodexModel(alias))
+			require.Equal(t, model, NormalizeOpenAICompatRequestedModel(alias))
 			require.Equal(t, "max", normalizeOpenAIReasoningEffortForModel("max", alias))
+			require.True(t, isOpenAIGPT6Model(alias))
+			require.True(t, shouldAutoInjectPromptCacheKeyForCompat(alias))
+			require.True(t, configuredCodexSupportsPriorityServiceTier(alias))
+			require.True(t, isOpenAICodexImageInputModel(alias))
+			require.True(t, strings.HasPrefix(strings.TrimSpace(openai.CodexBaseInstructionsForModel(alias)), "You are Codex, an agent based on GPT-6."))
 		}
 		require.Contains(t, openai.DefaultModelIDs(), model)
 		descriptor := newConfiguredCodexModelDescriptor(model)
@@ -24,8 +33,33 @@ func TestGPT62ModelIdentityAndReasoning(t *testing.T) {
 		for _, level := range descriptor.SupportedReasoningLevels {
 			levels = append(levels, level.Effort)
 		}
-		require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, levels)
+		require.Equal(t, []string{"low", "medium", "high", "xhigh", "max", "ultra"}, levels)
+		require.NotNil(t, descriptor.DefaultReasoningLevel)
+		require.Equal(t, "low", *descriptor.DefaultReasoningLevel)
+		require.EqualValues(t, 872_000, descriptor.MaxContextWindow)
+		require.Equal(t, "v2", descriptor.MultiAgentVersion)
+		if model == "gpt-6.2-sol" {
+			require.EqualValues(t, 500_000, descriptor.ContextWindow)
+		} else {
+			require.EqualValues(t, 272_000, descriptor.ContextWindow)
+		}
+		encoded, err := json.Marshal(descriptor)
+		require.NoError(t, err)
+		require.Contains(t, string(encoded), `"minimal_client_version":"0.166.0"`)
 	}
+	compatReq := &apicompat.AnthropicRequest{Model: "openai/gpt-6.2-sol-max"}
+	applyOpenAICompatModelNormalization(compatReq)
+	require.Equal(t, "gpt-6.2-sol", compatReq.Model)
+	require.NotNil(t, compatReq.OutputConfig)
+	require.Equal(t, "max", compatReq.OutputConfig.Effort)
+	responsesReq, err := apicompat.AnthropicToResponses(&apicompat.AnthropicRequest{
+		Model:        "gpt-6.2-astra",
+		MaxTokens:    128,
+		OutputConfig: &apicompat.AnthropicOutputConfig{Effort: "max"},
+		Messages:     []apicompat.AnthropicMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "max", responsesReq.Reasoning.Effort)
 	for _, unknown := range []string{"gpt-6.2-astral", "gpt-6.2-astra-prototype", "gpt-6.2-astra-pro-preview", "gpt-6.2-solitude", "gpt-6.20-astra"} {
 		require.Empty(t, normalizeOpenAIGPT62Model(unknown), unknown)
 	}
@@ -43,28 +77,28 @@ func TestGPT62DefaultPricingAndCacheTTL(t *testing.T) {
 		"bundled":      NewBillingService(&config.Config{}, catalog),
 	} {
 		for _, tc := range []struct {
-			model                      string
-			input, output, write, read float64
+			model                                string
+			input, output, write, write12h, read float64
 		}{
-			{"gpt-6.2-astra", 10e-6, 50e-6, 12.5e-6, 1e-6},
-			{"gpt-6.2-astra-pro", 10e-6, 50e-6, 12.5e-6, 1e-6},
-			{"gpt-6.2-sol", 2e-6, 10e-6, 2.5e-6, 0.1e-6},
+			{"gpt-6.2-astra", 8e-6, 40e-6, 10e-6, 20e-6, 0.4e-6},
+			{"gpt-6.2-astra-pro", 8e-6, 40e-6, 10e-6, 20e-6, 0.4e-6},
+			{"gpt-6.2-sol", 2e-6, 10e-6, 2.5e-6, 5e-6, 0.1e-6},
 		} {
 			t.Run(source+"/"+tc.model, func(t *testing.T) {
 				for _, model := range []string{tc.model, "openai/" + tc.model + "-max"} {
 					price, err := svc.GetModelPricing(model)
 					require.NoError(t, err)
 					require.NotNil(t, price.CacheCreation12hPricePerToken)
-					require.InDelta(t, tc.write, *price.CacheCreation12hPricePerToken, 1e-12)
-					// The supplied cards have no context ranges. A long prompt must
-					// not silently inherit an older model's context surcharge.
+					require.InDelta(t, tc.write12h, *price.CacheCreation12hPricePerToken, 1e-12)
+					// This short-context rate update preserves the independent
+					// existing tier/context policy.
 					tokens := UsageTokens{InputTokens: 300000, OutputTokens: 500, CacheReadTokens: 2000, CacheCreationTokens: 1000, CacheCreation30mTokens: 400, CacheCreation12hTokens: 600}
 					for tier, multiplier := range map[string]float64{"": 1, "priority": 2, "flex": 0.5, "ultrafast": 6} {
 						cost, err := svc.CalculateCostWithServiceTier(model, tokens, 1, tier)
 						require.NoError(t, err)
 						require.InDelta(t, 300000*tc.input*multiplier, cost.InputCost, 1e-10)
 						require.InDelta(t, 500*tc.output*multiplier, cost.OutputCost, 1e-10)
-						require.InDelta(t, 1000*tc.write*multiplier, cost.CacheCreationCost, 1e-10)
+						require.InDelta(t, (400*tc.write+600*tc.write12h)*multiplier, cost.CacheCreationCost, 1e-10)
 						require.InDelta(t, 2000*tc.read*multiplier, cost.CacheReadCost, 1e-10)
 						require.False(t, cost.LongContextBillingApplied)
 					}

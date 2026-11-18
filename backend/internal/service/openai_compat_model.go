@@ -8,6 +8,9 @@ import (
 )
 
 func NormalizeOpenAICompatRequestedModel(model string) string {
+	if base62 := openai.NormalizeGPT62Model(model); base62 != "" {
+		return base62
+	}
 	if openai.IsGPT61TerraModelSpelling(model) {
 		return "gpt-6.1-terra"
 	}
@@ -27,10 +30,14 @@ func NormalizeOpenAICompatRequestedModel(model string) string {
 }
 
 func applyOpenAICompatModelNormalization(req *apicompat.AnthropicRequest) {
-	if req != nil && (openai.IsGPT61SolModelSpelling(req.Model) || openai.IsGPT61TerraModelSpelling(req.Model)) {
+	if req != nil && (openai.NormalizeGPT62Model(req.Model) != "" || openai.IsGPT61SolModelSpelling(req.Model) || openai.IsGPT61TerraModelSpelling(req.Model)) {
 		canonical := openai.CanonicalizeOpenAIModelAliasSpelling(req.Model)
 		baseModel := NormalizeOpenAICompatRequestedModel(req.Model)
-		if effort, ok := strings.CutPrefix(canonical, baseModel+"-"); ok && effort != "openai-compact" {
+		if suffix, ok := strings.CutPrefix(canonical, baseModel+"-"); ok && suffix != "openai-compact" && !openai.IsCodexDateSuffix(suffix) {
+			effort := suffix
+			if effort == "ultra" {
+				effort = "max"
+			}
 			req.Model = baseModel
 			if req.OutputConfig == nil {
 				req.OutputConfig = &apicompat.AnthropicOutputConfig{}
