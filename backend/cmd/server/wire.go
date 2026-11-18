@@ -91,7 +91,6 @@ func providePluginHostInfo(buildInfo handler.BuildInfo) service.PluginHostInfo {
 func provideCleanup(
 	providerChannels *admin.ChannelHandler,
 	qqBot *qqbot.Service,
-	balanceNotify *service.BalanceNotifyService,
 	autoCreditEmail *service.AutoCreditEmailWorker,
 	cfg *config.Config,
 	requestCaptures *requestcapture.Manager,
@@ -125,6 +124,7 @@ func provideCleanup(
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
+	usageBillingLanes *service.UsageBillingLaneCombiner,
 	subscriptionService *service.SubscriptionService,
 	oauth *service.OAuthService,
 	openaiOAuth *service.OpenAIOAuthService,
@@ -160,9 +160,6 @@ func provideCleanup(
 		}
 	}
 	return func() {
-		if balanceNotify != nil {
-			balanceNotify.Stop()
-		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
@@ -394,6 +391,10 @@ func provideCleanup(
 				if usageRecordWorkerPool != nil {
 					usageRecordWorkerPool.Stop()
 				}
+				return nil
+			}},
+			{"UsageBillingLaneCombiner", func() error {
+				usageBillingLanes.Stop()
 				return nil
 			}},
 			{"OAuthService", func() error {

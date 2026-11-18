@@ -55,7 +55,6 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 	cleanup := provideCleanup(
 		nil, // provider refresh worker
 		nil, // QQ community worker
-		nil, // balance forecast owner
 		nil, // auto credit email worker
 		nil, // default/full runtime configuration
 		nil, // request capture manager
@@ -89,6 +88,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		emailQueueSvc,
 		billingCacheSvc,
 		&service.UsageRecordWorkerPool{},
+		nil, // usageBillingLanes
 		&service.SubscriptionService{},
 		oauthSvc,
 		openAIOAuthSvc,

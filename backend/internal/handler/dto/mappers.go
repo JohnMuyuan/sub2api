@@ -158,7 +158,9 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
 		ForceOpenAIFast:             g.ForceOpenAIFast,
+		ForceOpenAIUltrafast:        g.ForceOpenAIUltrafast,
 		FreeOpenAIFast:              g.FreeOpenAIFast,
+		FreeOpenAIUltrafast:         g.FreeOpenAIUltrafast,
 		StreamOnly:                  g.StreamOnly,
 		CodexCLIOnly:                g.CodexCLIOnly,
 		BlockSubagents:              g.BlockSubagents,
@@ -762,6 +764,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		QueueWaitMs:               l.QueueWaitMs,
 		QueueTiming:               l.QueueTiming,
 		ContentTiming:             l.ContentTiming,
+		CustomerCostDetails:       l.CustomerCostDetails,
 		ImageCount:                l.ImageCount,
 		ImageSize:                 l.ImageSize,
 		ImageInputSize:            l.ImageInputSize,

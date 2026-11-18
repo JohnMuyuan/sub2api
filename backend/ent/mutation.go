@@ -22677,7 +22677,9 @@ type GroupMutation struct {
 	allow_messages_dispatch                 *bool
 	allow_live                              *bool
 	force_openai_fast                       *bool
+	force_openai_ultrafast                  *bool
 	free_openai_fast                        *bool
+	free_openai_ultrafast                   *bool
 	require_oauth_only                      *bool
 	require_privacy_set                     *bool
 	default_mapped_model                    *string
@@ -25682,6 +25684,42 @@ func (m *GroupMutation) ResetForceOpenaiFast() {
 	m.force_openai_fast = nil
 }
 
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (m *GroupMutation) SetForceOpenaiUltrafast(b bool) {
+	m.force_openai_ultrafast = &b
+}
+
+// ForceOpenaiUltrafast returns the value of the "force_openai_ultrafast" field in the mutation.
+func (m *GroupMutation) ForceOpenaiUltrafast() (r bool, exists bool) {
+	v := m.force_openai_ultrafast
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldForceOpenaiUltrafast returns the old "force_openai_ultrafast" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldForceOpenaiUltrafast(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldForceOpenaiUltrafast is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldForceOpenaiUltrafast requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldForceOpenaiUltrafast: %w", err)
+	}
+	return oldValue.ForceOpenaiUltrafast, nil
+}
+
+// ResetForceOpenaiUltrafast resets all changes to the "force_openai_ultrafast" field.
+func (m *GroupMutation) ResetForceOpenaiUltrafast() {
+	m.force_openai_ultrafast = nil
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (m *GroupMutation) SetFreeOpenaiFast(b bool) {
 	m.free_openai_fast = &b
@@ -25716,6 +25754,42 @@ func (m *GroupMutation) OldFreeOpenaiFast(ctx context.Context) (v bool, err erro
 // ResetFreeOpenaiFast resets all changes to the "free_openai_fast" field.
 func (m *GroupMutation) ResetFreeOpenaiFast() {
 	m.free_openai_fast = nil
+}
+
+// SetFreeOpenaiUltrafast sets the "free_openai_ultrafast" field.
+func (m *GroupMutation) SetFreeOpenaiUltrafast(b bool) {
+	m.free_openai_ultrafast = &b
+}
+
+// FreeOpenaiUltrafast returns the value of the "free_openai_ultrafast" field in the mutation.
+func (m *GroupMutation) FreeOpenaiUltrafast() (r bool, exists bool) {
+	v := m.free_openai_ultrafast
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFreeOpenaiUltrafast returns the old "free_openai_ultrafast" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldFreeOpenaiUltrafast(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFreeOpenaiUltrafast is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFreeOpenaiUltrafast requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFreeOpenaiUltrafast: %w", err)
+	}
+	return oldValue.FreeOpenaiUltrafast, nil
+}
+
+// ResetFreeOpenaiUltrafast resets all changes to the "free_openai_ultrafast" field.
+func (m *GroupMutation) ResetFreeOpenaiUltrafast() {
+	m.free_openai_ultrafast = nil
 }
 
 // SetRequireOauthOnly sets the "require_oauth_only" field.
@@ -26619,7 +26693,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 71)
+	fields := make([]string, 0, 73)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26791,8 +26865,14 @@ func (m *GroupMutation) Fields() []string {
 	if m.force_openai_fast != nil {
 		fields = append(fields, group.FieldForceOpenaiFast)
 	}
+	if m.force_openai_ultrafast != nil {
+		fields = append(fields, group.FieldForceOpenaiUltrafast)
+	}
 	if m.free_openai_fast != nil {
 		fields = append(fields, group.FieldFreeOpenaiFast)
+	}
+	if m.free_openai_ultrafast != nil {
+		fields = append(fields, group.FieldFreeOpenaiUltrafast)
 	}
 	if m.require_oauth_only != nil {
 		fields = append(fields, group.FieldRequireOauthOnly)
@@ -26955,8 +27035,12 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowLive()
 	case group.FieldForceOpenaiFast:
 		return m.ForceOpenaiFast()
+	case group.FieldForceOpenaiUltrafast:
+		return m.ForceOpenaiUltrafast()
 	case group.FieldFreeOpenaiFast:
 		return m.FreeOpenaiFast()
+	case group.FieldFreeOpenaiUltrafast:
+		return m.FreeOpenaiUltrafast()
 	case group.FieldRequireOauthOnly:
 		return m.RequireOauthOnly()
 	case group.FieldRequirePrivacySet:
@@ -27106,8 +27190,12 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldAllowLive(ctx)
 	case group.FieldForceOpenaiFast:
 		return m.OldForceOpenaiFast(ctx)
+	case group.FieldForceOpenaiUltrafast:
+		return m.OldForceOpenaiUltrafast(ctx)
 	case group.FieldFreeOpenaiFast:
 		return m.OldFreeOpenaiFast(ctx)
+	case group.FieldFreeOpenaiUltrafast:
+		return m.OldFreeOpenaiUltrafast(ctx)
 	case group.FieldRequireOauthOnly:
 		return m.OldRequireOauthOnly(ctx)
 	case group.FieldRequirePrivacySet:
@@ -27542,12 +27630,26 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetForceOpenaiFast(v)
 		return nil
+	case group.FieldForceOpenaiUltrafast:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetForceOpenaiUltrafast(v)
+		return nil
 	case group.FieldFreeOpenaiFast:
 		v, ok := value.(bool)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFreeOpenaiFast(v)
+		return nil
+	case group.FieldFreeOpenaiUltrafast:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFreeOpenaiUltrafast(v)
 		return nil
 	case group.FieldRequireOauthOnly:
 		v, ok := value.(bool)
@@ -28322,8 +28424,14 @@ func (m *GroupMutation) ResetField(name string) error {
 	case group.FieldForceOpenaiFast:
 		m.ResetForceOpenaiFast()
 		return nil
+	case group.FieldForceOpenaiUltrafast:
+		m.ResetForceOpenaiUltrafast()
+		return nil
 	case group.FieldFreeOpenaiFast:
 		m.ResetFreeOpenaiFast()
+		return nil
+	case group.FieldFreeOpenaiUltrafast:
+		m.ResetFreeOpenaiUltrafast()
 		return nil
 	case group.FieldRequireOauthOnly:
 		m.ResetRequireOauthOnly()
@@ -53082,6 +53190,7 @@ type UsageLogMutation struct {
 	video_duration_seconds       *int
 	addvideo_duration_seconds    *int
 	cache_ttl_overridden         *bool
+	customer_cost_details        *map[string]interface{}
 	queue_timing                 *map[string]interface{}
 	created_at                   *time.Time
 	clearedFields                map[string]struct{}
@@ -55796,6 +55905,55 @@ func (m *UsageLogMutation) ResetCacheTTLOverridden() {
 	m.cache_ttl_overridden = nil
 }
 
+// SetCustomerCostDetails sets the "customer_cost_details" field.
+func (m *UsageLogMutation) SetCustomerCostDetails(value map[string]interface{}) {
+	m.customer_cost_details = &value
+}
+
+// CustomerCostDetails returns the value of the "customer_cost_details" field in the mutation.
+func (m *UsageLogMutation) CustomerCostDetails() (r map[string]interface{}, exists bool) {
+	v := m.customer_cost_details
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCustomerCostDetails returns the old "customer_cost_details" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCustomerCostDetails(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCustomerCostDetails is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCustomerCostDetails requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCustomerCostDetails: %w", err)
+	}
+	return oldValue.CustomerCostDetails, nil
+}
+
+// ClearCustomerCostDetails clears the value of the "customer_cost_details" field.
+func (m *UsageLogMutation) ClearCustomerCostDetails() {
+	m.customer_cost_details = nil
+	m.clearedFields[usagelog.FieldCustomerCostDetails] = struct{}{}
+}
+
+// CustomerCostDetailsCleared returns if the "customer_cost_details" field was cleared in this mutation.
+func (m *UsageLogMutation) CustomerCostDetailsCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCustomerCostDetails]
+	return ok
+}
+
+// ResetCustomerCostDetails resets all changes to the "customer_cost_details" field.
+func (m *UsageLogMutation) ResetCustomerCostDetails() {
+	m.customer_cost_details = nil
+	delete(m.clearedFields, usagelog.FieldCustomerCostDetails)
+}
+
 // SetQueueTiming sets the "queue_timing" field.
 func (m *UsageLogMutation) SetQueueTiming(value map[string]interface{}) {
 	m.queue_timing = &value
@@ -56050,7 +56208,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 52)
+	fields := make([]string, 0, 53)
 	if m.platform != nil {
 		fields = append(fields, usagelog.FieldPlatform)
 	}
@@ -56201,6 +56359,9 @@ func (m *UsageLogMutation) Fields() []string {
 	if m.cache_ttl_overridden != nil {
 		fields = append(fields, usagelog.FieldCacheTTLOverridden)
 	}
+	if m.customer_cost_details != nil {
+		fields = append(fields, usagelog.FieldCustomerCostDetails)
+	}
 	if m.queue_timing != nil {
 		fields = append(fields, usagelog.FieldQueueTiming)
 	}
@@ -56315,6 +56476,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.VideoDurationSeconds()
 	case usagelog.FieldCacheTTLOverridden:
 		return m.CacheTTLOverridden()
+	case usagelog.FieldCustomerCostDetails:
+		return m.CustomerCostDetails()
 	case usagelog.FieldQueueTiming:
 		return m.QueueTiming()
 	case usagelog.FieldCreatedAt:
@@ -56428,6 +56591,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldVideoDurationSeconds(ctx)
 	case usagelog.FieldCacheTTLOverridden:
 		return m.OldCacheTTLOverridden(ctx)
+	case usagelog.FieldCustomerCostDetails:
+		return m.OldCustomerCostDetails(ctx)
 	case usagelog.FieldQueueTiming:
 		return m.OldQueueTiming(ctx)
 	case usagelog.FieldCreatedAt:
@@ -56790,6 +56955,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCacheTTLOverridden(v)
+		return nil
+	case usagelog.FieldCustomerCostDetails:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCustomerCostDetails(v)
 		return nil
 	case usagelog.FieldQueueTiming:
 		v, ok := value.(map[string]interface{})
@@ -57198,6 +57370,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldVideoDurationSeconds) {
 		fields = append(fields, usagelog.FieldVideoDurationSeconds)
 	}
+	if m.FieldCleared(usagelog.FieldCustomerCostDetails) {
+		fields = append(fields, usagelog.FieldCustomerCostDetails)
+	}
 	if m.FieldCleared(usagelog.FieldQueueTiming) {
 		fields = append(fields, usagelog.FieldQueueTiming)
 	}
@@ -57286,6 +57461,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldVideoDurationSeconds:
 		m.ClearVideoDurationSeconds()
+		return nil
+	case usagelog.FieldCustomerCostDetails:
+		m.ClearCustomerCostDetails()
 		return nil
 	case usagelog.FieldQueueTiming:
 		m.ClearQueueTiming()
@@ -57447,6 +57625,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldCacheTTLOverridden:
 		m.ResetCacheTTLOverridden()
+		return nil
+	case usagelog.FieldCustomerCostDetails:
+		m.ResetCustomerCostDetails()
 		return nil
 	case usagelog.FieldQueueTiming:
 		m.ResetQueueTiming()
