@@ -179,10 +179,14 @@ func nextPlanRun(plan *ScheduledTestPlan, now time.Time) (time.Time, error) {
 		} else if strings.TrimSpace(cfg.Prompt) == "" || len(cfg.Prompt) > 32000 || strings.TrimSpace(plan.ModelID) == "" || len(plan.ModelID) > 100 {
 			return time.Time{}, fmt.Errorf("pelican prompt and model are required (maximum 32000/100 bytes)")
 		}
+		cfg.DeliveryContract = strings.TrimSpace(cfg.DeliveryContract)
+		if len(cfg.DeliveryContract) > IQCustomQuestionMaxContract {
+			return time.Time{}, fmt.Errorf("delivery contract must be at most %d bytes", IQCustomQuestionMaxContract)
+		}
 		if err := validateQualityPolicy(plan); err != nil {
 			return time.Time{}, err
 		}
-		if cfg.QuestionKind != "" && cfg.QuestionKind != "pelican" && !isQualityAnswerQuestion(cfg.QuestionKind) && cfg.QuestionKind != OpenAICodexStateProbeQuestionKind {
+		if cfg.QuestionKind != "" && cfg.QuestionKind != "pelican" && cfg.QuestionKind != CustomQuestionKind && cfg.QuestionKind != CustomHTMLQuestionKind && !isQualityAnswerQuestion(cfg.QuestionKind) && cfg.QuestionKind != OpenAICodexStateProbeQuestionKind {
 			return time.Time{}, fmt.Errorf("invalid question kind")
 		}
 		// 同一账号同一时刻只允许一次探针，并行只会互相挤掉，直接禁止。

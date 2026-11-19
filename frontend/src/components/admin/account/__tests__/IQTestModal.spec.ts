@@ -7,8 +7,22 @@ import IQTestModal from '../IQTestModal.vue'
 import TestModelSelect from '../TestModelSelect.vue'
 import { apiClient } from '@/api/client'
 
-const { probeOpenAICodexState, getAvailableModels, getModelReasoning } = vi.hoisted(() => ({
-  probeOpenAICodexState: vi.fn(), getAvailableModels: vi.fn(), getModelReasoning: vi.fn()
+const {
+  probeOpenAICodexState,
+  getAvailableModels,
+  getModelReasoning,
+  listIQCustomQuestions,
+  createIQCustomQuestion,
+  updateIQCustomQuestion,
+  deleteIQCustomQuestion
+} = vi.hoisted(() => ({
+  probeOpenAICodexState: vi.fn(),
+  getAvailableModels: vi.fn(),
+  getModelReasoning: vi.fn(),
+  listIQCustomQuestions: vi.fn(),
+  createIQCustomQuestion: vi.fn(),
+  updateIQCustomQuestion: vi.fn(),
+  deleteIQCustomQuestion: vi.fn()
 }))
 
 vi.mock('@/api/admin/accounts', async () => {
@@ -16,9 +30,20 @@ vi.mock('@/api/admin/accounts', async () => {
   return { ...actual, probeOpenAICodexState, getAvailableModels, getModelReasoning }
 })
 
+vi.mock('@/api/admin/iqQuestions', () => ({
+  listIQCustomQuestions,
+  createIQCustomQuestion,
+  updateIQCustomQuestion,
+  deleteIQCustomQuestion
+}))
+
 beforeEach(() => {
   getAvailableModels.mockReset().mockResolvedValue([])
   getModelReasoning.mockReset().mockResolvedValue({ supported_reasoning_levels: ['low', 'medium', 'high'], default_reasoning_level: 'medium' })
+  listIQCustomQuestions.mockReset().mockResolvedValue([])
+  createIQCustomQuestion.mockReset()
+  updateIQCustomQuestion.mockReset()
+  deleteIQCustomQuestion.mockReset()
 })
 
 vi.mock('vue-i18n', async () => {
@@ -514,6 +539,125 @@ describe('IQTestModal state probe mode', () => {
     expect(probeOpenAICodexState.mock.calls[0][2].signal.aborted).toBe(true)
     expect((wrapper.vm as any).probeResults).toHaveLength(0)
     expect((wrapper.vm as any).running).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('IQTestModal custom questions', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    localStorage.setItem('auth_token', 'test-token')
+  })
+
+  it('sends free-form custom text prompt verbatim without appending integer or HTML contracts', async () => {
+    global.fetch = vi.fn(() => Promise.resolve(streamResponse([
+      { type: 'content', text: 'Here is a step-by-step explanation.' },
+      { type: 'test_complete', success: true }
+    ]))) as any
+    const wrapper = mountModal()
+    await flushPromises()
+    const vm = wrapper.vm as any
+    vm.selectQuestion('custom')
+    vm.prompt = 'Explain why TCP uses a 3-way handshake.'
+    await flushPromises()
+    await vm.startTest()
+    await flushPromises()
+
+    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body)
+    expect(body.prompt).toBe('Explain why TCP uses a 3-way handshake.')
+    expect(vm.runs[0].status).toBe('success')
+    expect(wrapper.find('iframe').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Here is a step-by-step explanation.')
+    wrapper.unmount()
+  })
+
+  it('supports custom HTML questions with optional contract and renders sandboxed iframe', async () => {
+    global.fetch = vi.fn(() => Promise.resolve(streamResponse([
+      { type: 'content', text: '<!doctype html><html><body><svg id="clock"></svg></body></html>' },
+      { type: 'test_complete', success: true }
+    ]))) as any
+    const wrapper = mountModal()
+    await flushPromises()
+    const vm = wrapper.vm as any
+    vm.selectQuestion('custom_html')
+    vm.prompt = 'Draw an analog SVG clock'
+    vm.customContract = 'Return standalone HTML only.'
+    await flushPromises()
+    await vm.startTest()
+    await flushPromises()
+
+    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body)
+    expect(body.prompt).toBe('Draw an analog SVG clock\n\nReturn standalone HTML only.')
+    expect(vm.runs[0].status).toBe('success')
+    expect(wrapper.find('iframe').exists()).toBe(true)
+    expect(wrapper.get('iframe').attributes('srcdoc')).toContain('<svg id="clock"></svg>')
+    wrapper.unmount()
+  })
+
+  it('creates, edits, selects, and deletes saved custom questions with form validation', async () => {
+    const saved = {
+      id: 'cq_1',
+      title: '河内塔推理',
+      prompt: '求 4 层河内塔最少步数',
+      output_type: 'text' as const,
+      delivery_contract: '只给结论',
+      reference_note: '参考答案：15'
+    }
+    const updated = {
+      ...saved,
+      title: '河内塔推理 V2',
+      prompt: '求 5 层河内塔最少步数',
+      reference_note: '参考答案：31'
+    }
+    createIQCustomQuestion.mockResolvedValueOnce(saved)
+    updateIQCustomQuestion.mockResolvedValueOnce(updated)
+    deleteIQCustomQuestion.mockResolvedValueOnce(undefined)
+
+    const wrapper = mountModal()
+    await flushPromises()
+
+    // Open create form and test validation on empty submit.
+    await wrapper.get('[data-testid="add-custom-question"]').trigger('click')
+    await wrapper.get('[data-testid="custom-question-editor"]').trigger('submit')
+    expect(createIQCustomQuestion).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="custom-question-title-error"]').exists()).toBe(true)
+
+    // Fill fields and save.
+    await wrapper.get('[data-testid="custom-question-title"]').setValue(saved.title)
+    await wrapper.get('[data-testid="custom-question-prompt"]').setValue(saved.prompt)
+    await wrapper.get('[data-testid="custom-question-contract"]').setValue(saved.delivery_contract)
+    await wrapper.get('[data-testid="custom-question-note"]').setValue(saved.reference_note)
+    await wrapper.get('[data-testid="custom-question-editor"]').trigger('submit')
+    await flushPromises()
+
+    expect(createIQCustomQuestion).toHaveBeenCalledWith({
+      title: saved.title,
+      prompt: saved.prompt,
+      output_type: 'text',
+      delivery_contract: saved.delivery_contract,
+      reference_note: saved.reference_note
+    })
+    expect((wrapper.vm as any).selectedQuestionKey).toBe('saved:cq_1')
+    expect(wrapper.get('[data-testid="custom-question-note-hint"]').text()).toContain('参考答案：15')
+
+    // Edit the saved custom question.
+    await wrapper.get('[data-testid="edit-custom-question"]').trigger('click')
+    await wrapper.get('[data-testid="custom-question-title"]').setValue(updated.title)
+    await wrapper.get('[data-testid="custom-question-prompt"]').setValue(updated.prompt)
+    await wrapper.get('[data-testid="custom-question-note"]').setValue(updated.reference_note)
+    await wrapper.get('[data-testid="custom-question-editor"]').trigger('submit')
+    await flushPromises()
+
+    expect(updateIQCustomQuestion).toHaveBeenCalledWith('cq_1', expect.objectContaining({ title: updated.title, prompt: updated.prompt }))
+    expect(wrapper.get('[data-testid="custom-question-note-hint"]').text()).toContain('参考答案：31')
+
+    // Delete the saved custom question.
+    await wrapper.get('[data-testid="delete-custom-question"]').trigger('click')
+    await wrapper.get('[data-testid="confirm-delete-custom-question"]').trigger('click')
+    await flushPromises()
+
+    expect(deleteIQCustomQuestion).toHaveBeenCalledWith('cq_1')
+    expect((wrapper.vm as any).selectedQuestionKey).toBe('candy')
     wrapper.unmount()
   })
 })

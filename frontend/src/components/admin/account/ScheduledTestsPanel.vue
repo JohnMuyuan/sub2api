@@ -112,7 +112,7 @@
             </div>
           </div>
         </div>
-        <PelicanTestFields v-if="pelicanConfig" v-model="newPelican" class="mt-3" />
+        <PelicanTestFields v-if="pelicanConfig" v-model="newPelican" :custom-questions="customQuestions" class="mt-3" />
         <div class="mt-3 flex justify-end gap-2">
           <button
             @click="showAddForm = false; resetNewPlan()"
@@ -331,7 +331,7 @@
                 </div>
               </div>
             </div>
-            <PelicanTestFields v-if="pelicanConfig" v-model="editPelican" class="mt-3" />
+            <PelicanTestFields v-if="pelicanConfig" v-model="editPelican" :custom-questions="customQuestions" class="mt-3" />
             <div class="mt-3 flex justify-end gap-2">
               <button
                 @click="cancelEdit"
@@ -485,7 +485,7 @@ import { useAppStore } from '@/stores/app'
 import { formatDateTime } from '@/utils/format'
 import PelicanTestFields from './PelicanTestFields.vue'
 import { STATE_PROBE_QUESTION, stateProbeVerdict, type StateProbeVerdict } from '@/utils/intelligenceTest'
-import type { PelicanTestConfig, ScheduledTestPlan, ScheduledTestResult } from '@/types'
+import type { IQCustomQuestion, PelicanTestConfig, ScheduledTestPlan, ScheduledTestResult } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -517,6 +517,7 @@ const props = defineProps<{
   modelOptions: SelectOption[]
   embedded?: boolean
   pelicanConfig?: PelicanTestConfig
+  customQuestions?: IQCustomQuestion[]
   defaultModel?: string
   disabled?: boolean
 }>()

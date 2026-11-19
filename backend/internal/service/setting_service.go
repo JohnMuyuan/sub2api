@@ -207,6 +207,7 @@ type SettingService struct {
 	channelMonitorRuntimeListeners   []func()
 	codexHarvestWakeOnce             sync.Once
 	codexHarvestWake                 chan struct{}
+	iqCustomQuestionsMu              sync.Mutex
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）

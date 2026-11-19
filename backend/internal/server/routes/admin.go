@@ -1016,6 +1016,10 @@ func registerScheduledTestRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	admin.PUT("/account-quality-templates/:id", h.Admin.ScheduledTest.UpdateQualityTemplate)
 	admin.DELETE("/account-quality-templates/:id", h.Admin.ScheduledTest.DeleteQualityTemplate)
 	admin.GET("/pelican-test-results", h.Admin.ScheduledTest.ListPelicanHistory)
+	admin.GET("/iq-custom-questions", h.Admin.Account.ListIQCustomQuestions)
+	admin.POST("/iq-custom-questions", h.Admin.Account.CreateIQCustomQuestion)
+	admin.PUT("/iq-custom-questions/:id", h.Admin.Account.UpdateIQCustomQuestion)
+	admin.DELETE("/iq-custom-questions/:id", h.Admin.Account.DeleteIQCustomQuestion)
 	plans := admin.Group("/scheduled-test-plans")
 	plans.Use(h.Admin.ScheduledTest.ObserverGuard(h.Admin.Account))
 	{

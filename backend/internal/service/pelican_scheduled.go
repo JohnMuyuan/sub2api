@@ -42,7 +42,7 @@ func (s *AccountTestService) RunPelicanBackground(ctx context.Context, accountID
 		return s.runOpenAICodexStateProbeScheduled(ctx, accountID, model, cfg)
 	}
 	// Recognize the exact built-in question in legacy HTML plans as well.
-	if isBuiltinCandyPlan(cfg) {
+	if cfg.QuestionKind != CustomQuestionKind && cfg.QuestionKind != CustomHTMLQuestionKind && isBuiltinCandyPlan(cfg) {
 		copy := *cfg
 		copy.QuestionKind = "candy"
 		cfg = &copy
@@ -510,6 +510,12 @@ func intelligenceTestPrompt(cfg *PelicanTestConfig) string {
 		// The V1 challenge already asks for the bare number.
 		return cfg.Prompt
 	}
+	if cfg.QuestionKind == CustomQuestionKind || cfg.QuestionKind == CustomHTMLQuestionKind {
+		if contract := strings.TrimSpace(cfg.DeliveryContract); contract != "" {
+			return cfg.Prompt + "\n\n" + contract
+		}
+		return cfg.Prompt
+	}
 	contract := PelicanDeliveryContract
 	if cfg.QuestionKind == "candy" || isBuiltinCandyPlan(cfg) {
 		contract = "只输出最终整数，不要解释。"
@@ -531,10 +537,13 @@ func intelligenceTestOutputError(cfg *PelicanTestConfig, output string) string {
 		// The V3 prober checks the arithmetic answer itself.
 		return ""
 	}
-	if isBuiltinCandyPlan(cfg) && !CandyAnswerCorrect(output) {
+	if cfg.QuestionKind == CustomQuestionKind {
+		return ""
+	}
+	if cfg.QuestionKind != CustomHTMLQuestionKind && isBuiltinCandyPlan(cfg) && !CandyAnswerCorrect(output) {
 		return "answer_mismatch: expected 21"
 	}
-	if cfg.QuestionKind != "candy" && !isBuiltinCandyPlan(cfg) && !pelicanHTMLPattern.MatchString(output) {
+	if cfg.QuestionKind != "candy" && (cfg.QuestionKind == CustomHTMLQuestionKind || !isBuiltinCandyPlan(cfg)) && !pelicanHTMLPattern.MatchString(output) {
 		return "Model did not return HTML or SVG"
 	}
 	return ""

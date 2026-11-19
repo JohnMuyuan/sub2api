@@ -8,17 +8,17 @@ import { CANDY_PROMPT } from '@/utils/intelligenceTest'
 vi.mock('vue-i18n', async () => ({ ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'), useI18n: () => ({ t: (key: string) => key }) }))
 const SelectStub = { name: 'Select', props: ['modelValue', 'options'], emits: ['update:modelValue'], template: '<div class="select-stub" />' }
 const config = { question_kind: 'pelican' as const, prompt: 'draw a pelican', reasoning_effort: 'high', parallel_count: 4 }
-function render(modelValue: Record<string, unknown> = config) {
-  return mount(PelicanTestFields, { props: { modelValue: modelValue as any }, global: { stubs: { Select: SelectStub, TextArea: true, Input: true } } })
+function render(modelValue: Record<string, unknown> = config, customQuestions: any[] = []) {
+  return mount(PelicanTestFields, { props: { modelValue: modelValue as any, customQuestions }, global: { stubs: { Select: SelectStub, TextArea: true, Input: true } } })
 }
 describe('PelicanTestFields question kinds', () => {
-  it('offers the state probe and switches to a prompt-free single run', async () => {
+  it('offers custom questions alongside built-ins and switches to a prompt-free single run for probe', async () => {
     const wrapper = render()
     expect(wrapper.find('text-area-stub').exists()).toBe(true)
     const question = wrapper.findAllComponents(SelectStub)[0]
-    expect(question.props('options').map((o: { value: string }) => o.value)).toEqual(['candy', 'pelican', 'state_probe'])
+    expect(question.props('options').map((o: { value: string }) => o.value)).toEqual(['candy', 'pelican', 'custom', 'custom_html', 'state_probe'])
     question.vm.$emit('update:modelValue', 'state_probe')
-    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([{ ...config, prompt_mode: 'custom', question_kind: 'state_probe', prompt: '', parallel_count: 1, reasoning_effort: 'high' }])
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([{ ...config, prompt_mode: 'custom', question_kind: 'state_probe', prompt: '', delivery_contract: undefined, parallel_count: 1, reasoning_effort: 'high' }])
     wrapper.unmount()
   })
   it('hides the question and parallel fields for probe plans and restores them for candy', async () => {
@@ -28,6 +28,20 @@ describe('PelicanTestFields question kinds', () => {
     expect(wrapper.findAllComponents(SelectStub)).toHaveLength(1)
     wrapper.findAllComponents(SelectStub)[0].vm.$emit('update:modelValue', 'candy')
     expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toMatchObject({ question_kind: 'candy', prompt: CANDY_PROMPT })
+    wrapper.unmount()
+  })
+  it('applies a saved custom question preset with its output type and delivery contract', async () => {
+    const saved = [{ id: 'cq_demo', title: '自定义推理', prompt: '算一下 19*23', output_type: 'text', delivery_contract: '只输出数字' }]
+    const wrapper = render(config, saved)
+    const question = wrapper.findAllComponents(SelectStub)[0]
+    expect(question.props('options').map((o: { value: string }) => o.value)).toContain('saved:cq_demo')
+    question.vm.$emit('update:modelValue', 'saved:cq_demo')
+    expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toMatchObject({
+      question_kind: 'custom',
+      prompt_mode: 'custom',
+      prompt: '算一下 19*23',
+      delivery_contract: '只输出数字'
+    })
     wrapper.unmount()
   })
 })

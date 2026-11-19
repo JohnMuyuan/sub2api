@@ -123,10 +123,76 @@
           :model-options="modelOptions" :reasoning-levels="reasoningLevels" @running="running = $event" />
       </template>
       <template v-else>
-      <div>
-        <label class="input-label mb-1.5 block">{{ t('admin.accounts.pelicanTest.question') }}</label>
-        <Select data-testid="question-select" :model-value="questionKind" :options="questionOptions" :disabled="running" @update:model-value="selectQuestion" />
-        <p v-if="questionKind === 'candy'" class="mt-2 text-xs text-gray-500">{{ t('admin.accounts.pelicanTest.candyHint') }}</p>
+      <div class="space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <label class="input-label block">{{ t('admin.accounts.pelicanTest.question') }}</label>
+          <div v-if="!auth.isObserver" class="flex flex-wrap items-center gap-1.5">
+            <button
+              v-if="activeCustomQuestion"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:bg-dark-700"
+              :disabled="running || editorSaving || deletingQuestion"
+              data-testid="edit-custom-question"
+              @click="openEditCustomQuestion"
+            >
+              {{ t('admin.accounts.pelicanTest.customQuestions.edit') }}
+            </button>
+            <button
+              v-if="activeCustomQuestion"
+              type="button"
+              class="rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900/60 dark:bg-dark-800 dark:text-red-400 dark:hover:bg-red-950/30"
+              :disabled="running || editorSaving || deletingQuestion"
+              data-testid="delete-custom-question"
+              @click="requestDeleteCustomQuestion"
+            >
+              {{ t('admin.accounts.pelicanTest.customQuestions.delete') }}
+            </button>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1 rounded-md border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-primary-800/70 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50"
+              :disabled="running || editorSaving || deletingQuestion"
+              data-testid="add-custom-question"
+              @click="openCreateCustomQuestion"
+            >
+              <Icon name="plus" size="xs" :stroke-width="2" />
+              {{ selectedQuestionKey === 'custom' && prompt.trim() ? t('admin.accounts.pelicanTest.customQuestions.saveCurrent') : t('admin.accounts.pelicanTest.customQuestions.add') }}
+            </button>
+          </div>
+        </div>
+        <Select data-testid="question-select" :model-value="selectedQuestionKey" :options="questionOptions" :disabled="running" @update:model-value="selectQuestion" />
+        <p v-if="questionKind === 'candy'" class="text-xs text-gray-500">{{ t('admin.accounts.pelicanTest.candyHint') }}</p>
+        <p v-else-if="activeCustomQuestion?.reference_note" class="text-xs text-gray-500 dark:text-gray-400" data-testid="custom-question-note-hint">
+          {{ activeCustomQuestion.reference_note }}
+        </p>
+
+        <div
+          v-if="deleteConfirmId && activeCustomQuestion && deleteConfirmId === activeCustomQuestion.id"
+          class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-300"
+          data-testid="delete-custom-question-confirm"
+        >
+          <span>{{ t('admin.accounts.pelicanTest.customQuestions.deleteConfirm', { title: activeCustomQuestion.title }) }}</span>
+          <div class="flex items-center gap-2">
+            <button type="button" class="rounded px-2 py-1 font-medium text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-dark-800" :disabled="deletingQuestion" @click="deleteConfirmId = null">
+              {{ t('common.cancel') }}
+            </button>
+            <button type="button" class="rounded bg-red-600 px-2.5 py-1 font-medium text-white hover:bg-red-700 disabled:opacity-50" :disabled="deletingQuestion" data-testid="confirm-delete-custom-question" @click="confirmDeleteCustomQuestion">
+              {{ t('common.delete') }}
+            </button>
+          </div>
+        </div>
+        <p v-if="customQuestionActionError" role="alert" class="text-xs text-red-600 dark:text-red-400" data-testid="custom-question-action-error">
+          {{ customQuestionActionError }}
+        </p>
+
+        <CustomQuestionEditor
+          v-if="editorOpen"
+          :initial-value="editorInitial"
+          :editing="Boolean(editingQuestionId)"
+          :saving="editorSaving"
+          :server-error="editorError"
+          @save="handleSaveCustomQuestion"
+          @cancel="closeCustomQuestionEditor"
+        />
       </div>
       <template v-if="questionKind === 'pelican'">
         <PelicanPromptMode :model-value="promptMode" @update:model-value="selectPromptMode" :disabled="running || preparingQuestion" />
@@ -136,6 +202,51 @@
           <PelicanQuestionSnapshot v-if="questionSnapshot" :question="questionSnapshot.pelican_question" :actual-prompt="questionSnapshot.actual_prompt" />
         </template>
       </template>
+      <div v-if="isCustomKind" class="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3 dark:border-dark-600 dark:bg-dark-800/40 sm:grid-cols-2" data-testid="custom-question-options">
+        <fieldset class="space-y-1.5" :disabled="running">
+          <legend class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.pelicanTest.customQuestions.outputTypeLabel') }}</legend>
+          <div class="flex flex-wrap gap-4 pt-1 text-xs">
+            <label class="inline-flex cursor-pointer items-center gap-1.5 text-gray-700 dark:text-gray-200">
+              <input
+                type="radio"
+                name="iq-custom-output-type"
+                value="custom"
+                :checked="questionKind === 'custom'"
+                class="accent-primary-600"
+                data-testid="custom-output-text"
+                @change="setCustomOutputType('text')"
+              />
+              <span>{{ t('admin.accounts.pelicanTest.customQuestions.outputText') }}</span>
+            </label>
+            <label class="inline-flex cursor-pointer items-center gap-1.5 text-gray-700 dark:text-gray-200">
+              <input
+                type="radio"
+                name="iq-custom-output-type"
+                value="custom_html"
+                :checked="questionKind === 'custom_html'"
+                class="accent-primary-600"
+                data-testid="custom-output-html"
+                @change="setCustomOutputType('html')"
+              />
+              <span>{{ t('admin.accounts.pelicanTest.customQuestions.outputHtml') }}</span>
+            </label>
+          </div>
+        </fieldset>
+        <div>
+          <label for="iq-custom-contract" class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.accounts.pelicanTest.customQuestions.contractLabel') }}
+          </label>
+          <input
+            id="iq-custom-contract"
+            v-model="customContract"
+            type="text"
+            class="input w-full text-xs"
+            :disabled="running"
+            :placeholder="t('admin.accounts.pelicanTest.customQuestions.contractPlaceholder')"
+            data-testid="custom-contract-input"
+          />
+        </div>
+      </div>
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         <TextArea
           v-if="promptMode !== 'random'"
@@ -171,7 +282,7 @@
       <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-dark-600 dark:bg-dark-800/70 dark:text-gray-300">
         <div class="flex items-start gap-2">
           <Icon name="shield" size="sm" class="mt-0.5 shrink-0 text-emerald-500" />
-          <span>{{ deliveryContract }}</span>
+          <span>{{ deliveryContract || t('admin.accounts.pelicanTest.customQuestions.noContractHint') }}</span>
         </div>
       </div>
 
@@ -206,7 +317,8 @@
 
       <ScheduledTestsPanel v-if="show && account && activeTab === 'schedule'" :key="account.id" :show="true" embedded
         :account-id="account.id" :default-model="modelId" :model-options="[{ value: modelId, label: modelId }]"
-        :pelican-config="{ question_kind: questionKind, prompt_mode: promptMode, prompt, reasoning_effort: reasoningEffort, parallel_count: Number(parallelCount) }"
+        :pelican-config="{ question_kind: questionKind, prompt_mode: promptMode, prompt, delivery_contract: isCustomKind ? customContract.trim() : undefined, reasoning_effort: reasoningEffort, parallel_count: Number(parallelCount) }"
+        :custom-questions="customQuestions"
         :disabled="running" @preview="previewScheduled" @history="scheduledRecords = $event" />
       <div v-else-if="activeTab === 'history'" class="space-y-2">
         <button v-for="result in scheduledRecords" :key="`scheduled-${result.id}`" type="button"
@@ -296,7 +408,18 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { questionPrompt, questionContract, isTextAnswerKind, stateProbeVerdict, STATE_PROBE_QUESTION, type IntelligenceQuestion, type StateProbeVerdict } from '@/utils/intelligenceTest'
+import {
+  buildActualPrompt,
+  customQuestionKind,
+  isCustomQuestionKind,
+  isTextAnswerKind,
+  questionContract,
+  questionPrompt,
+  stateProbeVerdict,
+  STATE_PROBE_QUESTION,
+  type IntelligenceQuestion,
+  type StateProbeVerdict
+} from '@/utils/intelligenceTest'
 import { useI18n } from 'vue-i18n'
 import { extractPelicanHtml as extractHtml } from '@/utils/pelicanHtml'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -306,12 +429,14 @@ import Select from '@/components/common/Select.vue'
 import { Icon } from '@/components/icons'
 import PelicanPromptMode from './PelicanPromptMode.vue'
 import PelicanQuestionSnapshot from './PelicanQuestionSnapshot.vue'
+import CustomQuestionEditor from './CustomQuestionEditor.vue'
 import { useAuthStore } from '@/stores/auth'
 import { currentPelicanQuestionRound, preparePelicanQuestionRound } from '@/utils/pelicanQuestionRound'
 import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { getAvailableModels, getModelReasoning, probeOpenAICodexState, type OpenAICodexStateProbeResult, type OpenAICodexStateVerdict } from '@/api/admin/accounts'
-import type { Account, AccountListItem, PelicanQuestion, PelicanTestConfig, ScheduledTestResult } from '@/types'
+import { createIQCustomQuestion, deleteIQCustomQuestion, listIQCustomQuestions, updateIQCustomQuestion } from '@/api/admin/iqQuestions'
+import type { Account, AccountListItem, IQCustomQuestion, IQCustomQuestionInput, IQCustomQuestionOutputType, PelicanQuestion, PelicanTestConfig, ScheduledTestResult } from '@/types'
 import ScheduledTestsPanel from './ScheduledTestsPanel.vue'
 import PelicanRecordsDashboard from './PelicanRecordsDashboard.vue'
 import TestModelSelect from './TestModelSelect.vue'
@@ -349,6 +474,7 @@ interface TestRecord {
   pelicanQuestion?: PelicanQuestion
   actualPrompt?: string
   questionKind?: IntelligenceQuestion
+  deliveryContract?: string
   id: string
   createdAt: string
   prompt: string
@@ -361,6 +487,17 @@ const props = defineProps<{ show: boolean; account: Account | null; accounts?: A
 const emit = defineEmits<{ (event: 'close'): void }>()
 
 const questionKind = ref<IntelligenceQuestion>('candy')
+const selectedQuestionKey = ref<string>('candy')
+const customContract = ref('')
+const customQuestions = ref<IQCustomQuestion[]>([])
+const editorOpen = ref(false)
+const editingQuestionId = ref<string | null>(null)
+const editorSaving = ref(false)
+const editorError = ref('')
+const editorInitial = ref<IQCustomQuestionInput>({ title: '', prompt: '', output_type: 'text', delivery_contract: '', reference_note: '' })
+const deleteConfirmId = ref<string | null>(null)
+const deletingQuestion = ref(false)
+const customQuestionActionError = ref('')
 const prompt = ref(questionPrompt('candy'))
 const promptMode = ref<'custom' | 'random'>('custom')
 const questionSnapshot = ref<PelicanTestConfig | null>(null)
@@ -419,13 +556,167 @@ const testMode = ref<TestMode>('question')
 const probeResults = ref<OpenAICodexStateProbeResult[]>([])
 const probeError = ref('')
 
-const deliveryContract = computed(() => questionContract(questionKind.value))
-const questionOptions = computed(() => ['candy', 'pelican'].map(value => ({ value, label: t(`admin.accounts.pelicanTest.${value}Question`) })))
+const isCustomKind = computed(() => isCustomQuestionKind(questionKind.value))
+const activeCustomQuestion = computed(() => {
+  if (!selectedQuestionKey.value.startsWith('saved:')) return null
+  const id = selectedQuestionKey.value.slice('saved:'.length)
+  return customQuestions.value.find((item) => item.id === id) || null
+})
+const deliveryContract = computed(() => questionContract(questionKind.value, customContract.value))
+const questionOptions = computed(() => [
+  { value: 'candy', label: t('admin.accounts.pelicanTest.candyQuestion') },
+  { value: 'pelican', label: t('admin.accounts.pelicanTest.pelicanQuestion') },
+  { value: 'custom', label: t('admin.accounts.pelicanTest.customQuestion') },
+  ...customQuestions.value.map((item) => ({
+    value: `saved:${item.id}`,
+    label: item.output_type === 'html'
+      ? `${item.title} (${t('admin.accounts.pelicanTest.customQuestionTag')} · ${t('admin.accounts.pelicanTest.customHtmlTag')})`
+      : `${item.title} (${t('admin.accounts.pelicanTest.customQuestionTag')})`
+  }))
+])
+function setCustomOutputType(outputType: IQCustomQuestionOutputType) {
+  if (running.value) return
+  questionKind.value = customQuestionKind(outputType)
+}
 function selectQuestion(value: string | number | boolean | null) {
-  if (running.value || (value !== 'candy' && value !== 'pelican')) return
-  questionKind.value = value
-  promptMode.value = 'custom'
-  prompt.value = questionPrompt(value)
+  if (running.value || typeof value !== 'string') return
+  deleteConfirmId.value = null
+  customQuestionActionError.value = ''
+  if (value === 'candy' || value === 'pelican') {
+    selectedQuestionKey.value = value
+    questionKind.value = value
+    promptMode.value = 'custom'
+    customContract.value = ''
+    prompt.value = questionPrompt(value)
+    return
+  }
+  if (value === 'custom' || value === 'custom_html') {
+    const switchingFromOther = selectedQuestionKey.value !== 'custom'
+    selectedQuestionKey.value = 'custom'
+    questionKind.value = value
+    promptMode.value = 'custom'
+    if (switchingFromOther) {
+      prompt.value = ''
+      customContract.value = ''
+    }
+    return
+  }
+  if (value.startsWith('saved:')) {
+    const id = value.slice('saved:'.length)
+    const found = customQuestions.value.find((item) => item.id === id)
+    if (!found) return
+    selectedQuestionKey.value = value
+    questionKind.value = customQuestionKind(found.output_type)
+    promptMode.value = 'custom'
+    prompt.value = found.prompt
+    customContract.value = found.delivery_contract || ''
+  }
+}
+
+let customQuestionsLoadToken = 0
+async function loadCustomQuestions() {
+  const token = ++customQuestionsLoadToken
+  try {
+    const items = await listIQCustomQuestions()
+    if (token !== customQuestionsLoadToken || !props.show) return
+    customQuestions.value = items
+  } catch {
+    if (token === customQuestionsLoadToken) customQuestions.value = []
+  }
+}
+
+function openCreateCustomQuestion() {
+  if (running.value) return
+  deleteConfirmId.value = null
+  customQuestionActionError.value = ''
+  editorError.value = ''
+  editingQuestionId.value = null
+  const fromFreeform = selectedQuestionKey.value === 'custom'
+  editorInitial.value = {
+    title: '',
+    prompt: fromFreeform ? prompt.value : '',
+    output_type: fromFreeform && questionKind.value === 'custom_html' ? 'html' : 'text',
+    delivery_contract: fromFreeform ? customContract.value : '',
+    reference_note: ''
+  }
+  editorOpen.value = true
+}
+
+function openEditCustomQuestion() {
+  if (running.value || !activeCustomQuestion.value) return
+  deleteConfirmId.value = null
+  customQuestionActionError.value = ''
+  editorError.value = ''
+  editingQuestionId.value = activeCustomQuestion.value.id
+  editorInitial.value = {
+    title: activeCustomQuestion.value.title,
+    prompt: activeCustomQuestion.value.prompt,
+    output_type: activeCustomQuestion.value.output_type,
+    delivery_contract: activeCustomQuestion.value.delivery_contract || '',
+    reference_note: activeCustomQuestion.value.reference_note || ''
+  }
+  editorOpen.value = true
+}
+
+function closeCustomQuestionEditor() {
+  if (editorSaving.value) return
+  editorOpen.value = false
+  editingQuestionId.value = null
+  editorError.value = ''
+}
+
+async function handleSaveCustomQuestion(payload: IQCustomQuestionInput) {
+  if (editorSaving.value) return
+  editorSaving.value = true
+  editorError.value = ''
+  try {
+    let saved: IQCustomQuestion
+    if (editingQuestionId.value) {
+      saved = await updateIQCustomQuestion(editingQuestionId.value, payload)
+      customQuestions.value = customQuestions.value.map((item) => (item.id === saved.id ? saved : item))
+    } else {
+      saved = await createIQCustomQuestion(payload)
+      customQuestions.value = [...customQuestions.value, saved]
+    }
+    editorOpen.value = false
+    editingQuestionId.value = null
+    selectQuestion(`saved:${saved.id}`)
+  } catch (error) {
+    const message = (error as { message?: unknown } | null)?.message
+    editorError.value = typeof message === 'string' && message ? message : t('admin.accounts.pelicanTest.customQuestions.saveFailed')
+  } finally {
+    editorSaving.value = false
+  }
+}
+
+function requestDeleteCustomQuestion() {
+  if (running.value || !activeCustomQuestion.value) return
+  customQuestionActionError.value = ''
+  deleteConfirmId.value = activeCustomQuestion.value.id
+}
+
+async function confirmDeleteCustomQuestion() {
+  const id = deleteConfirmId.value
+  if (!id || deletingQuestion.value) return
+  deletingQuestion.value = true
+  customQuestionActionError.value = ''
+  try {
+    await deleteIQCustomQuestion(id)
+    customQuestions.value = customQuestions.value.filter((item) => item.id !== id)
+    deleteConfirmId.value = null
+    if (editingQuestionId.value === id) {
+      editorOpen.value = false
+      editingQuestionId.value = null
+    }
+    if (selectedQuestionKey.value === `saved:${id}`) {
+      selectQuestion('candy')
+    }
+  } catch (error) {
+    const message = (error as { message?: unknown } | null)?.message
+    customQuestionActionError.value = typeof message === 'string' && message ? message : t('admin.accounts.pelicanTest.customQuestions.deleteFailed')
+  } finally {
+    deletingQuestion.value = false
+  }
 }
 const reasoningOptions = computed(() => reasoningLevels.value.map((value) => ({
   value,
@@ -550,7 +841,9 @@ function editSchedule(config: PelicanTestConfig, model: string) {
   // Server-generated questions belong to quality rules, not manual test inputs.
   if (config.question_kind === STATE_PROBE_QUESTION || config.question_kind === 'random_reasoning') return
   questionKind.value = config.question_kind || 'pelican'
+  selectedQuestionKey.value = isCustomQuestionKind(questionKind.value) ? 'custom' : questionKind.value
   prompt.value = config.prompt
+  customContract.value = isCustomQuestionKind(questionKind.value) ? (config.delivery_contract || '') : ''
   promptMode.value = config.prompt_mode || 'custom'
   questionSnapshot.value = config.pelican_question ? JSON.parse(JSON.stringify(config)) : null
   modelId.value = model
@@ -581,7 +874,9 @@ function previewScheduled(result: ScheduledTestResult) {
 function loadRecord(record: TestRecord) {
   if (running.value) return
   questionKind.value = record.questionKind || 'pelican'
+  selectedQuestionKey.value = isCustomQuestionKind(questionKind.value) ? 'custom' : questionKind.value
   prompt.value = record.prompt
+  customContract.value = isCustomQuestionKind(questionKind.value) ? (record.deliveryContract || '') : ''
   promptMode.value = record.pelicanQuestion ? 'random' : 'custom'
   questionSnapshot.value = record.pelicanQuestion ? { prompt: record.prompt, reasoning_effort: record.reasoningEffort, parallel_count: record.runs.length, pelican_question: record.pelicanQuestion, actual_prompt: record.actualPrompt } : null
   modelId.value = record.modelId
@@ -658,8 +953,8 @@ async function consumeRun(run: TestRun, signal: AbortSignal, round: ManualRound)
   }
   if (buffer.trim()) consumeLine(buffer.trim())
   if (!completed || !run.output.trim()) throw new Error(t('admin.accounts.pelicanTest.emptyResponse'))
-  run.html = run.questionKind === 'candy' ? '' : extractHtml(run.output)
-  if (run.questionKind !== 'candy' && !run.html) throw new Error(t('admin.accounts.pelicanTest.invalidHtml'))
+  run.html = isTextAnswerKind(run.questionKind) ? '' : extractHtml(run.output)
+  if (!isTextAnswerKind(run.questionKind) && !run.html) throw new Error(t('admin.accounts.pelicanTest.invalidHtml'))
   run.status = 'success'
 }
 
@@ -689,9 +984,10 @@ async function startTest() {
     accountId: props.account.id, questionKind: questionKind.value,
     modelId: modelId.value.trim(), reasoningEffort: reasoningEffort.value,
     prompt: question?.prompt || prompt.value.trim(),
-    actualPrompt: question ? questionSnapshot.value!.actual_prompt! : `${prompt.value.trim()}\n\n${deliveryContract.value}`,
+    actualPrompt: question ? questionSnapshot.value!.actual_prompt! : buildActualPrompt(prompt.value, deliveryContract.value),
     question: question ? JSON.parse(JSON.stringify(question)) : undefined,
   }
+  const roundContract = isCustomKind.value ? customContract.value.trim() : ''
   const count = normalizeCount()
   parallelCount.value = count
   runs.value = Array.from({ length: count }, (_, index) => ({
@@ -714,6 +1010,7 @@ async function startTest() {
     id: `${Date.now()}`,
     createdAt: new Date().toISOString(),
     questionKind: round.questionKind,
+    deliveryContract: roundContract || undefined,
     prompt: round.prompt,
     actualPrompt: round.actualPrompt,
     pelicanQuestion: round.question,
@@ -775,6 +1072,13 @@ watch(() => [props.show, props.account?.id] as const, ([show]) => {
     viewingScheduled.value = false
     scheduledRecords.value = []
     questionKind.value = 'candy'
+    selectedQuestionKey.value = 'candy'
+    customContract.value = ''
+    editorOpen.value = false
+    editingQuestionId.value = null
+    editorError.value = ''
+    deleteConfirmId.value = null
+    customQuestionActionError.value = ''
     promptMode.value = 'custom'
     questionSnapshot.value = null
     questionError.value = ''
@@ -787,6 +1091,7 @@ watch(() => [props.show, props.account?.id] as const, ([show]) => {
     testMode.value = 'question'
     probeResults.value = []
     probeError.value = ''
+    void loadCustomQuestions()
     void loadModels()
     void loadReasoning()
   } else {

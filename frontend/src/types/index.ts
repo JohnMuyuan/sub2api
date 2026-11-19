@@ -2865,6 +2865,27 @@ export interface QualityRestoreDiagnostic {
   current_concurrency?: number
 }
 
+export type IQCustomQuestionOutputType = 'text' | 'html'
+
+export interface IQCustomQuestion {
+  id: string
+  title: string
+  prompt: string
+  output_type: IQCustomQuestionOutputType
+  delivery_contract?: string
+  reference_note?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface IQCustomQuestionInput {
+  title: string
+  prompt: string
+  output_type: IQCustomQuestionOutputType
+  delivery_contract?: string
+  reference_note?: string
+}
+
 export interface PelicanQuestion {
   id: string
   version: string
@@ -2885,7 +2906,7 @@ export interface PelicanTestConfig {
   quality_model_actions?: Record<string, string>
   trigger_source?: string
   quality?: QualityPolicy
-  question_kind?: 'candy' | 'pelican' | 'state_probe' | 'random_reasoning'
+  question_kind?: 'candy' | 'pelican' | 'custom' | 'custom_html' | 'state_probe' | 'random_reasoning'
   // Result-only identity of a runtime-generated question.
   random_question?: { id: string; family: 'paths' | 'weighted_xor'; version: string }
   quality_batch?: {
@@ -2904,6 +2925,7 @@ export interface PelicanTestConfig {
   }
   test_channel?: 'account' | 'bps'
   prompt: string
+  delivery_contract?: string
   reasoning_effort: string
   parallel_count: number
   model_id?: string
