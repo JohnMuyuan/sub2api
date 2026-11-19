@@ -13,9 +13,8 @@ import (
 )
 
 var codexModelMap = map[string]string{
-	"gpt-6.2-astra":        "gpt-6.2-astra",
-	"gpt-6.2-astra-pro":    "gpt-6.2-astra-pro",
 	"gpt-6.2-sol":          "gpt-6.2-sol",
+	"gpt-6.2-astra":        "gpt-6.2-astra",
 	"gpt-6.1-terra":        "gpt-6.1-terra",
 	"gpt-6.1-sol":          "gpt-6.1-sol",
 	"gpt-6-sol":            "gpt-6-sol",
@@ -69,10 +68,9 @@ var codexVersionModelPrefixes = []struct {
 	prefix string
 	target string
 }{
-	{prefix: "gpt-6.2-astra-pro", target: "gpt-6.2-astra-pro"},
-	{prefix: "gpt-6.2-astra", target: "gpt-6.2-astra"},
-	{prefix: "gpt-6.2-sol", target: "gpt-6.2-sol"},
 	{prefix: "gpt-6.1-terra", target: "gpt-6.1-terra"},
+	{prefix: "gpt-6.2-sol", target: "gpt-6.2-sol"},
+	{prefix: "gpt-6.2-astra", target: "gpt-6.2-astra"},
 	{prefix: "gpt-6.1-sol", target: "gpt-6.1-sol"},
 	{prefix: "gpt-6-sol", target: "gpt-6-sol"},
 	{prefix: "gpt-6-luna", target: "gpt-6-luna"},
@@ -695,7 +693,18 @@ func isKnownCodexModelSuffix(suffix string) bool {
 }
 
 func isCodexDateSuffix(suffix string) bool {
-	return openai.IsCodexDateSuffix(suffix)
+	parts := strings.Split(suffix, "-")
+	if len(parts) != 3 || len(parts[0]) != 4 || len(parts[1]) != 2 || len(parts[2]) != 2 {
+		return false
+	}
+	for _, part := range parts {
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func isCodexSparkModel(model string) bool {

@@ -558,20 +558,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		}
 	}
 
-	if base62 := normalizeOpenAIGPT62Model(modelID); base62 != "" {
-		rawMetadata := openai.CodexGPT62AstraMetadata
-		if base62 == "gpt-6.2-sol" {
-			rawMetadata = openai.CodexGPT62SolMetadata
-		}
-		if err := json.Unmarshal(rawMetadata, &descriptor); err != nil {
-			panic(err)
-		}
-		descriptor.Slug = modelID
-		if base62 == "gpt-6.2-astra-pro" {
-			descriptor.DisplayName = "GPT-6.2-Astra-Pro"
-		}
-		descriptor.officialMetadata = rawMetadata
-	} else if openai.IsGPT61SolModelSpelling(modelID) {
+	if openai.IsGPT61SolModelSpelling(modelID) {
 		if err := json.Unmarshal(openai.CodexGPT61SolMetadata, &descriptor); err != nil {
 			panic(err)
 		}
@@ -580,6 +567,22 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		// The October 12, 2026 Codex/Work default increased to 500k after
 		// the bundled official snapshot. Explicit upstream metadata still wins.
 		descriptor.ContextWindow = 500_000
+		// The two 6.2 descriptors now occupy the first two slots.
+		descriptor.Priority = 3
+	}
+	var metadata json.RawMessage
+	switch openai.GPT62ModelID(modelID) {
+	case "gpt-6.2-sol":
+		metadata = openai.CodexGPT62SolMetadata
+	case "gpt-6.2-astra":
+		metadata = openai.CodexGPT62AstraMetadata
+	}
+	if len(metadata) > 0 {
+		if err := json.Unmarshal(metadata, &descriptor); err != nil {
+			panic(err)
+		}
+		descriptor.Slug = modelID
+		descriptor.officialMetadata = metadata
 	}
 	return descriptor
 }
@@ -680,7 +683,7 @@ func configuredCodexGPTReasoningLevels(modelID string) []configuredCodexReasonin
 			Description: "Maximum reasoning depth for complex tasks",
 		})
 	}
-	if isOpenAIGPT6AstraModel(modelID) || openai.IsGPT61SolModelSpelling(modelID) || normalizeOpenAIGPT62Model(modelID) != "" || normalized == "gpt-5.6-sol" || normalized == "gpt-5.6-terra" {
+	if isOpenAIGPT6AstraModel(modelID) || openai.IsGPT61SolModelSpelling(modelID) || normalized == "gpt-5.6-sol" || normalized == "gpt-5.6-terra" {
 		levels = append(levels, configuredCodexReasoningLevel{
 			Effort:      "ultra",
 			Description: "Maximum reasoning with automatic task delegation",
@@ -1752,7 +1755,11 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 }
 
 func (s *OpenAIGatewayService) fetchNativeCodexModelsManifest(ctx context.Context, account *Account, clientVersion, ifNoneMatch string) (*OpenAIModelsResponse, error) {
-	useCache := !isFreshOpenAICredentialProbe(ctx)
+	return s.fetchNativeCodexModelsManifestWithPolicy(ctx, account, clientVersion, ifNoneMatch, openAIModelsReadDefault)
+}
+
+func (s *OpenAIGatewayService) fetchNativeCodexModelsManifestWithPolicy(ctx context.Context, account *Account, clientVersion, ifNoneMatch string, policy openAIModelsReadPolicy) (*OpenAIModelsResponse, error) {
+	useCache := policy != openAIModelsReadWhitelist && !isFreshOpenAICredentialProbe(ctx)
 	if account == nil {
 		return nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_ACCOUNT_REQUIRED", "account is required")
 	}
@@ -1763,6 +1770,11 @@ func (s *OpenAIGatewayService) fetchNativeCodexModelsManifest(ctx context.Contex
 
 	if credAccount.IsExcelOAuth() {
 		return nil, errExcelOAuthRouteUnavailable
+	}
+	if policy == openAIModelsReadWhitelist && credAccount.IsOpenAIAgentIdentity() {
+		// Even building these headers can create/persist a task. Whitelist
+		// discovery never owns the agent identity task lifecycle.
+		return nil, infraerrors.BadRequest("OPENAI_MODELS_READ_ONLY_ACCOUNT_UNSUPPORTED", "Read-only model discovery does not support agent identity accounts")
 	}
 	clientVersion = strings.TrimSpace(clientVersion)
 	if clientVersion == "" {
@@ -1863,6 +1875,11 @@ func (s *OpenAIGatewayService) fetchNativeCodexModelsManifest(ctx context.Contex
 	if !useCache {
 		request.headers.Del("If-None-Match")
 		request.headers.Set("Cache-Control", "no-cache")
+	}
+	if policy == openAIModelsReadWhitelist {
+		// Bypass the shared display cache and its detached refresh completely.
+		// Return the actual response before OAuth health handling/task recovery.
+		return s.fetchCodexModelsManifestUpstream(ctx, request, "")
 	}
 	if useAPIKeyUpstream {
 		if !useCache {
@@ -2208,14 +2225,14 @@ func CodexModelsManifestETag(body []byte) string {
 }
 
 var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
-	"gpt-6.2-astra":     {},
-	"gpt-6.2-astra-pro": {},
-	"gpt-6.2-sol":       {},
-	"gpt-6.1-sol":       {},
-	"gpt-6-astra":       {},
-	"gpt-5.6-sol":       {},
-	"gpt-5.6-terra":     {},
-	"gpt-5.6-luna":      {},
+	"gpt-6.2-sol":   {},
+	"gpt-6.2-astra": {},
+	"gpt-6.1-terra": {},
+	"gpt-6.1-sol":   {},
+	"gpt-6-astra":   {},
+	"gpt-5.6-sol":   {},
+	"gpt-5.6-terra": {},
+	"gpt-5.6-luna":  {},
 }
 
 // adjustAPIKeyCodexModelsManifest prevents Codex from selecting Responses
@@ -2246,9 +2263,7 @@ func adjustAPIKeyCodexModelsManifest(body []byte, account *Account) ([]byte, err
 		if account != nil {
 			target = account.GetMappedModel(slug)
 		}
-		if base62 := normalizeOpenAIGPT62Model(target); base62 != "" {
-			target = base62
-		} else if isOpenAIGPT6AstraModel(target) {
+		if isOpenAIGPT6AstraModel(target) {
 			target = "gpt-6-astra"
 		} else if openai.IsGPT61SolModelSpelling(target) {
 			target = "gpt-6.1-sol"

@@ -40,6 +40,9 @@ func normalizeKnownOpenAICodexModel(model string) string {
 		}
 	}
 
+	if base := openai.GPT62ModelID(normalized); base != "" {
+		return base
+	}
 	if openai.IsGPT61TerraModelSpelling(normalized) {
 		return "gpt-6.1-terra"
 	}
@@ -100,7 +103,17 @@ func normalizeKnownOpenAICodexModel(model string) string {
 // normalizeOpenAIGPT62Model keeps the three 6.2 models distinct, including Pro.
 // Only known effort, compact and date suffixes may share a base rate card.
 func normalizeOpenAIGPT62Model(model string) string {
-	return openai.NormalizeGPT62Model(model)
+	canonical := canonicalizeOpenAIModelAliasSpelling(model)
+	for _, base := range []string{"gpt-6.2-astra-pro", "gpt-6.2-astra", "gpt-6.2-sol"} {
+		if canonical == base {
+			return base
+		}
+		if suffix, ok := strings.CutPrefix(canonical, base+"-"); ok &&
+			(suffix == "max" || suffix == "openai-compact" || isKnownCodexModelSuffix(suffix)) {
+			return base
+		}
+	}
+	return ""
 }
 
 // isOpenAIGPT56Model 判断是否 GPT-5.6 系列模型；入参可为原始模型名
@@ -175,5 +188,5 @@ func firstUsageBillingModel(candidates []string) string {
 }
 
 func isOpenAIGPT6Model(model string) bool {
-	return normalizeOpenAIGPT62Model(model) != "" || openai.IsGPT61TerraModelSpelling(model) || isOpenAIGPT6AstraModel(model) || openai.IsGPT6SolOrLunaModelSpelling(model) || openai.IsGPT61SolModelSpelling(model)
+	return openai.GPT62ModelID(model) != "" || openai.IsGPT61TerraModelSpelling(model) || isOpenAIGPT6AstraModel(model) || openai.IsGPT6SolOrLunaModelSpelling(model) || openai.IsGPT61SolModelSpelling(model)
 }

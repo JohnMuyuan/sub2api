@@ -2,7 +2,8 @@ package service
 
 // gpt62DefaultPricing uses the official Standard short-context rates checked on
 // 2026-11-18: https://developers.openai.com/api/docs/pricing?context-length=short
-// Pro shares the Astra rates. Exact catalog and channel prices take precedence.
+// The owner confirms Pro uses the same rates as Astra. Exact catalog and
+// channel prices take precedence; tier/context policies are separate.
 func gpt62DefaultPricing(model string) *LiteLLMModelPricing {
 	var input, output, write, read float64
 	switch model {
@@ -14,7 +15,7 @@ func gpt62DefaultPricing(model string) *LiteLLMModelPricing {
 		return nil
 	}
 	write12h := write * 2
-	return &LiteLLMModelPricing{
+	pricing := &LiteLLMModelPricing{
 		InputCostPerToken:                   input,
 		OutputCostPerToken:                  output,
 		CacheCreationInputTokenCost:         write,
@@ -25,4 +26,11 @@ func gpt62DefaultPricing(model string) *LiteLLMModelPricing {
 		Mode:                                "responses",
 		SupportsPromptCaching:               true,
 	}
+	// Upstream publishes this policy for Sol/Astra, not the fork-only Pro ID.
+	if model == "gpt-6.2-sol" || model == "gpt-6.2-astra" {
+		pricing.LongContextInputTokenThreshold = 272_000
+		pricing.LongContextInputCostMultiplier = 2
+		pricing.LongContextOutputCostMultiplier = 1.5
+	}
+	return pricing
 }

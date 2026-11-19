@@ -1406,6 +1406,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       }
     }
   }
+  const solAstraOptions = {
+    limit: { context: 1050000, output: 128000 },
+    options: { store: false },
+    variants: { low: {}, medium: {}, high: {}, xhigh: {}, max: {} }
+  }
   const openaiModels = {
     'gpt-6': {
       name: 'GPT-6 (Astra)',
@@ -1423,24 +1428,6 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         xhigh: {},
         max: {}
       }
-    },
-    'gpt-6.2-astra': {
-      name: 'GPT-6.2 Astra',
-      limit: { context: 872000, output: 128000 },
-      options: { store: false },
-      variants: { low: {}, medium: {}, high: {}, xhigh: {}, max: {}, ultra: {} }
-    },
-    'gpt-6.2-astra-pro': {
-      name: 'GPT-6.2 Astra Pro',
-      limit: { context: 872000, output: 128000 },
-      options: { store: false },
-      variants: { low: {}, medium: {}, high: {}, xhigh: {}, max: {}, ultra: {} }
-    },
-    'gpt-6.2-sol': {
-      name: 'GPT-6.2 Sol',
-      limit: { context: 872000, output: 128000 },
-      options: { store: false },
-      variants: { low: {}, medium: {}, high: {}, xhigh: {}, max: {}, ultra: {} }
     },
     'gpt-6-astra': {
       name: 'GPT-6 Astra',
@@ -1498,23 +1485,9 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: { store: false },
       variants: { none: {}, low: {}, medium: {}, high: {}, xhigh: {}, max: {} }
     },
-    'gpt-6.1-sol': {
-      name: 'GPT-6.1 Sol',
-      limit: {
-        context: 1050000,
-        output: 128000
-      },
-      options: {
-        store: false
-      },
-      variants: {
-        low: {},
-        medium: {},
-        high: {},
-        xhigh: {},
-        max: {}
-      }
-    },
+    'gpt-6.2-sol': { name: 'GPT-6.2 Sol', ...solAstraOptions },
+    'gpt-6.2-astra': { name: 'GPT-6.2 Astra', ...solAstraOptions },
+    'gpt-6.1-sol': { name: 'GPT-6.1 Sol', ...solAstraOptions },
     'gpt-6-sol': {
       name: 'GPT-6 Sol',
       limit: {
