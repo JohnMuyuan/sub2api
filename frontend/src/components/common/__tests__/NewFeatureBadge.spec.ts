@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
 import NewFeatureBadge from '../NewFeatureBadge.vue'
 import zhCommon from '@/i18n/locales/zh/common'
-import { useNewFeatureNoticeStore } from '@/stores/newFeatureNotices'
 
 describe('NewFeatureBadge', () => {
   beforeEach(() => {
@@ -13,92 +12,25 @@ describe('NewFeatureBadge', () => {
     setActivePinia(createPinia())
   })
 
-  function mountBadge(userId = 41) {
+  function mountBadge(noticeId = NEW_FEATURE_NOTICES.protocolFeatureSwitches, userId = 41, compact = false) {
     const i18n = createI18n({ legacy: false, locale: 'zh', messages: { zh: zhCommon } })
     return mount(NewFeatureBadge, {
-      props: { noticeId: 'protocol-switches', userId },
+      props: { noticeId, userId, compact },
       global: { plugins: [i18n, createPinia()] },
     })
   }
 
+  it('renders nothing for standard and compact badges', () => {
+    const standard = mountBadge(NEW_FEATURE_NOTICES.openaiVideos, 41, false)
+    expect(standard.find('[data-testid="new-feature-badge"]').exists()).toBe(false)
+    expect(standard.find('button').exists()).toBe(false)
+    expect(standard.text()).toBe('')
+    standard.unmount()
 
-  it.each([
-    ['image usage billing', NEW_FEATURE_NOTICES.imageUsageBilling],
-    ['channel UltraFast pricing', NEW_FEATURE_NOTICES.channelUltrafastPricing],
-    ['user live load', NEW_FEATURE_NOTICES.userLiveLoad],
-    ['Free UltraFast', NEW_FEATURE_NOTICES.groupFreeUltrafast],
-    ['force UltraFast', NEW_FEATURE_NOTICES.groupForceUltrafast],
-    ['passthrough model filter', NEW_FEATURE_NOTICES.passthroughModelFilter],
-    ['Vertex multi-region', NEW_FEATURE_NOTICES.vertexMultiRegion],
-    ['OpenAI Videos', NEW_FEATURE_NOTICES.openaiVideos],
-    ['BPS account search', NEW_FEATURE_NOTICES.bpsAccountSearch],
-    ['mature providers', NEW_FEATURE_NOTICES.matureProviders],
-    ['provider key import', NEW_FEATURE_NOTICES.matureProviderImport],
-    ['QQ community', NEW_FEATURE_NOTICES.qqCommunity],
-    ['QQ reward coupons', NEW_FEATURE_NOTICES.qqRewardCoupons],
-    ['moderation upstream scope', NEW_FEATURE_NOTICES.moderationUpstreamAccountScope],
-    ['admin usage platform', NEW_FEATURE_NOTICES.adminUsagePlatform],
-    ['user ID copy', NEW_FEATURE_NOTICES.userIdCopy],
-    ['Antigravity usage query', NEW_FEATURE_NOTICES.antigravityUsageQuery],
-    ['account operations multiple recipients', NEW_FEATURE_NOTICES.accountOpsMultipleEmails],
-    ['account operations provider balance', NEW_FEATURE_NOTICES.accountOpsProviderBalance],
-    ['account operations OAuth lifecycle', NEW_FEATURE_NOTICES.accountOpsOAuthLifecycle],
-    ['account balance notification', NEW_FEATURE_NOTICES.accountOpsBalanceNotification],
-    ['OpenAI cache write TTL', NEW_FEATURE_NOTICES.openaiCacheWriteTTL12h],
-    ['EasyPay refund code', NEW_FEATURE_NOTICES.easyPayRefundSuccessCode],
-    ['payment provider fees', NEW_FEATURE_NOTICES.paymentProviderFees],
-    ['settings save dock', NEW_FEATURE_NOTICES.settingsSaveDock],
-    ['VIP automatic credit email', NEW_FEATURE_NOTICES.vipAutoCreditEmail],
-    ['priority account performance', NEW_FEATURE_NOTICES.priorityAccountPerformance],
-    ['priority cache weight', NEW_FEATURE_NOTICES.priorityCacheWeight],
-    ['dashboard account concurrency', NEW_FEATURE_NOTICES.dashboardAccountConcurrency],
-    ['key risk', NEW_FEATURE_NOTICES.keyRisk],
-    ['key source restrictions', NEW_FEATURE_NOTICES.keyRiskSources],
-    ['API key usage dates', NEW_FEATURE_NOTICES.apiKeyUsageDateRange],
-    ['pricing transfer', NEW_FEATURE_NOTICES.channelPricingTransfer],
-    ['stream event timing', NEW_FEATURE_NOTICES.streamFirstEventTiming],
-    ['Mistral budget usage', NEW_FEATURE_NOTICES.mistralBudgetUsage],
-    ['Qwen platform', NEW_FEATURE_NOTICES.qwenPlatform],
-    ['image header timeout groups', NEW_FEATURE_NOTICES.openaiImageHeaderTimeoutGroups],
-    ['provider profit reconciliation', NEW_FEATURE_NOTICES.providerProfit],
-    ['profit operations time ranges', NEW_FEATURE_NOTICES.profitOperationsTimeRanges],
-    ['quality retest rest', NEW_FEATURE_NOTICES.qualityRetestRest],
-    ['OAuth 401 quality cleanup', NEW_FEATURE_NOTICES.qualityOAuth401Cleanup],
-    ['AI operations proposal cancellation', NEW_FEATURE_NOTICES.aiOpsProposalCancel],
-    ['400 encrypted history recovery', NEW_FEATURE_NOTICES.openai400OmitEncryptedHistory],
-  ])('keeps %s dismissal shared and persistent across feature announcements', async (_feature, noticeId) => {
-    const pinia = createPinia()
-    setActivePinia(pinia)
-    const store = useNewFeatureNoticeStore()
-    const oldId = NEW_FEATURE_NOTICES.vipAutoCredit
-    store.dismiss(41, oldId)
-    const i18n = createI18n({ legacy: false, locale: 'zh', messages: { zh: zhCommon } })
-    const badge = () => mount(NewFeatureBadge, {
-      props: { noticeId, userId: 41 }, global: { plugins: [pinia, i18n] },
-    })
-    const first = badge()
-    const second = badge()
-    expect(first.find('button').exists()).toBe(true)
-    await first.get('button').trigger('click')
-    expect(second.find('button').exists()).toBe(false)
-    first.unmount()
-    second.unmount()
-    setActivePinia(createPinia())
-    const reloaded = useNewFeatureNoticeStore()
-    expect(reloaded.isDismissed(41, noticeId)).toBe(true)
-    expect(reloaded.isDismissed(41, oldId)).toBe(true)
-    expect(reloaded.isDismissed(41, 'future-feature-C')).toBe(false)
-  })
-
-  it('hides a shared notice for the current admin when clicked', async () => {
-    const wrapper = mountBadge()
-    expect(wrapper.get('[data-testid="new-feature-badge"]').text()).toBe('新功能')
-
-    await wrapper.get('[data-testid="new-feature-badge"]').trigger('click')
-
-    expect(wrapper.find('[data-testid="new-feature-badge"]').exists()).toBe(false)
-    expect(useNewFeatureNoticeStore().isDismissed(41, 'protocol-switches')).toBe(true)
-    expect(mountBadge().find('[data-testid="new-feature-badge"]').exists()).toBe(false)
-    expect(mountBadge(42).find('[data-testid="new-feature-badge"]').exists()).toBe(true)
+    const compact = mountBadge(NEW_FEATURE_NOTICES.protocolFeatureSwitches, 41, true)
+    expect(compact.find('[data-testid="new-feature-badge"]').exists()).toBe(false)
+    expect(compact.find('button').exists()).toBe(false)
+    expect(compact.text()).toBe('')
+    compact.unmount()
   })
 })

@@ -86,7 +86,6 @@
                     :to="child.path"
                     class="sidebar-link mb-0.5 py-1.5 text-sm"
                     :class="{ 'sidebar-link-active': route.path === child.path }"
-                    :style="child.noticeId ? { paddingRight: '3.5rem' } : undefined"
                     @click="handleMenuItemClick(child.path)"
                   >
                     <component :is="child.icon" class="h-4 w-4 flex-shrink-0" />
@@ -117,7 +116,6 @@
                         ? 'sidebar-wallet'
                         : undefined
                 "
-                :style="item.path === '/admin/settings' && !sidebarCollapsed ? { paddingRight: '6.5rem' } : undefined"
                 @click="handleMenuItemClick(item.path)"
               >
                 <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
