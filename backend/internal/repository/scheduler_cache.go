@@ -1754,6 +1754,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		service.UpstreamBillingProbeExtraKey,
 		service.GrokMediaEligibleExtraKey,
 		"grok_billing_snapshot",
+		service.GrokRateLimitHistoryExtraKey,
 	}
 	// Random scheduling thresholds count this month's full draws from here.
 	keys = append(keys, service.AccountSchedulingThresholdFullDrawExtraKeys()...)
