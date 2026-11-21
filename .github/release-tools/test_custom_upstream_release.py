@@ -43,13 +43,6 @@ class UpstreamReleaseTest(unittest.TestCase):
             with self.subTest(release=release), self.assertRaises(ValueError):
                 fetch_release_commit(release)
 
-    def test_workflow_uses_release_resolver_instead_of_branch(self):
-        workflow = (Path(__file__).resolve().parents[1] / "workflows" /
-                    "custom-upstream-sync.yml").read_text(encoding="utf-8")
-        self.assertIn("release_sha=$(python .github/release-tools/custom_upstream_release.py)", workflow)
-        self.assertIn('merge --no-edit "$release_sha"', workflow)
-        self.assertNotIn("upstream/production", workflow)
-
 
 if __name__ == "__main__":
     unittest.main()

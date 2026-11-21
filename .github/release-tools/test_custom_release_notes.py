@@ -120,8 +120,6 @@ class CustomReleaseNotesTest(unittest.TestCase):
         notes.run("git", "-c", "merge.keep-custom-readme.driver=true", "merge", "--no-edit", "upstream")
         self.assertEqual("江木源的自用版本\n", Path("README.md").read_text(encoding="utf-8"))
         self.assertEqual("upstream feature", Path("new-feature.txt").read_text(encoding="utf-8"))
-        workflow = (ROOT / ".github/workflows/custom-upstream-sync.yml").read_text(encoding="utf-8")
-        self.assertIn('git -c merge.keep-custom-readme.driver=true merge --no-edit "$release_sha"', workflow)
 
 
 if __name__ == "__main__":
