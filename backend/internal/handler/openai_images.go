@@ -455,8 +455,14 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		}
 		if result != nil {
 			// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
+			// 直调 /codex/images/* 返回的 x-codex-* 头代表独立的生图配额窗口，必须单独写入
+			// codex_image_* 字段，避免覆盖全局 5h/7d Codex 对话配额快照。
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
-				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
+				if service.IsCodexDirectImagesEndpoint(result.UpstreamEndpoint) {
+					h.gatewayService.UpdateCodexImageUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
+				} else {
+					h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
+				}
 			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, requestModel, false, result), err == nil, result.FirstTokenMs, err)
 		} else {

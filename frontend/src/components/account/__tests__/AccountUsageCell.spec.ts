@@ -808,6 +808,29 @@ describe('AccountUsageCell', () => {
       expect(wrapper.text()).not.toContain('usage.resetNow')
       wrapper.unmount()
     })
+
+    it('renders dedicated codex_image progress bar alongside 5h and 7d when present', async () => {
+      getUsage.mockResolvedValue({
+        ...snapshot(),
+        five_hour: { utilization: 0, resets_at: '2026-11-23T15:22:38Z', remaining_seconds: 17000 },
+        seven_day: { utilization: 16, resets_at: '2026-11-25T09:41:03Z', remaining_seconds: 169000 },
+        codex_image: {
+          utilization: 82,
+          resets_at: '2026-11-24T06:00:18Z',
+          remaining_seconds: 70432,
+          window_minutes: 1440
+        }
+      })
+      const wrapper = mount(AccountUsageCell, {
+        props: { account: makeAccount({ id: 8105, platform: 'openai', type: 'oauth' }) },
+        global: { stubs }
+      })
+      await flushPromises()
+      expect(wrapper.text()).toContain('5h|0')
+      expect(wrapper.text()).toContain('7d|16')
+      expect(wrapper.text()).toContain('admin.accounts.usageWindow.codexImage|82')
+      wrapper.unmount()
+    })
   })
 
   it('OpenAI OAuth 快照已过期时首屏会重新请求 usage', async () => {

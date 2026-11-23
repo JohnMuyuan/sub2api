@@ -763,7 +763,10 @@ export default {
         quotaObservedAt: '额度采样时间：',
         quotaObservationUnknown: '未知（历史缓存）',
         estimatedTotalCost: '预计总费用 ${cost}',
-        estimatedTotalCostTooltip: '根据当前窗口费用和使用率估算达到 100% 使用率时的总费用'
+        estimatedTotalCostTooltip: '根据当前窗口费用和使用率估算达到 100% 使用率时的总费用',
+        codexImage: '生图',
+        codexImageTooltip: '生图独立配额（{window} 滚动窗口，被动采样）',
+        codexImageTooltipDefault: '生图独立配额（被动采样）'
       },
       openaiReferral: {
         available: '可邀请',

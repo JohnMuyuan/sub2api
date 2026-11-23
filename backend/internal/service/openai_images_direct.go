@@ -14,6 +14,7 @@ import (
 )
 
 type openAIImagesForceResponsesContextKey struct{}
+type openAICodexDirectImagesContextKey struct{}
 
 func withOpenAIImagesForceResponses(ctx context.Context) context.Context {
 	return context.WithValue(ctx, openAIImagesForceResponsesContextKey{}, true)
@@ -25,6 +26,29 @@ func isOpenAIImagesForceResponses(ctx context.Context) bool {
 	}
 	forced, _ := ctx.Value(openAIImagesForceResponsesContextKey{}).(bool)
 	return forced
+}
+
+func withOpenAICodexDirectImagesRequest(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, openAICodexDirectImagesContextKey{}, true)
+}
+
+func isOpenAICodexDirectImagesRequest(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	direct, _ := ctx.Value(openAICodexDirectImagesContextKey{}).(bool)
+	return direct
+}
+
+// IsCodexDirectImagesEndpoint reports whether an upstream path targets
+// ChatGPT's dedicated /backend-api/codex/images/* endpoints, whose x-codex-*
+// rate-limit headers belong to the independent image quota window rather than
+// the global 5h/7d Codex text quota.
+func IsCodexDirectImagesEndpoint(endpoint string) bool {
+	return strings.Contains(strings.TrimSpace(endpoint), "/codex/images/")
 }
 
 // 显式列出已接入的模型，不把未来模型或未知快照自动送到直调端点。

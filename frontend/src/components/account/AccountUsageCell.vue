@@ -169,6 +169,17 @@
           :show-now-when-idle="true"
           color="emerald"
         />
+        <UsageProgressBar
+          v-if="usageInfo?.codex_image"
+          :label="t('admin.accounts.usageWindow.codexImage')"
+          :title="openAICodexImageTitle"
+          :utilization="usageInfo.codex_image.utilization"
+          :utilization-unknown="usageInfo.codex_image.utilization_unknown"
+          :resets-at="usageInfo.codex_image.resets_at"
+          :window-stats="usageInfo.codex_image.window_stats"
+          :show-now-when-idle="true"
+          color="amber"
+        />
         <div v-if="hasOpenAIQuotaObservation" class="text-[10px] text-gray-500 dark:text-gray-400">
           {{ t('admin.accounts.usageWindow.quotaObservedAt') }}
           <time v-if="usageInfo?.updated_at" :datetime="usageInfo.updated_at">
@@ -946,7 +957,7 @@ const geminiUsageAvailable = computed(() => {
 
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
-  return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
+  return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day || !!usageInfo.value?.codex_image
 })
 
 const codexTurnTickets = computed(() => props.account.codex_turn_tickets ?? [])
@@ -964,8 +975,17 @@ function formatCodexTicketRemaining(seconds: number) {
   return `${m}m${String(s).padStart(2, '0')}s`
 }
 const hasOpenAIQuotaObservation = computed(() => {
-  const windows = [usageInfo.value?.five_hour, usageInfo.value?.seven_day]
+  const windows = [usageInfo.value?.five_hour, usageInfo.value?.seven_day, usageInfo.value?.codex_image]
   return windows.some(window => window && !window.utilization_unknown)
+})
+
+const openAICodexImageTitle = computed(() => {
+  const minutes = usageInfo.value?.codex_image?.window_minutes
+  if (typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0) {
+    const windowLabel = minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes}m`
+    return t('admin.accounts.usageWindow.codexImageTooltip', { window: windowLabel })
+  }
+  return t('admin.accounts.usageWindow.codexImageTooltipDefault')
 })
 
 const openAISevenDayEstimatedTotalCost = computed(() => {

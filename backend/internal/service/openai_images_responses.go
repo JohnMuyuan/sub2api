@@ -1869,6 +1869,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		return nil, err
 	}
 	upstreamCtx = withOpenAIImagesSelfBuiltRequest(upstreamCtx)
+	if direct {
+		upstreamCtx = withOpenAICodexDirectImagesRequest(upstreamCtx)
+	}
 	upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, responsesBody, token, true, parsed.StickySessionSeed(), false)
 	if err != nil {
 		return nil, err
@@ -1947,6 +1950,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 				Message:            upstreamMsg,
 			})
 			shouldDisable := s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, upstreamModel)
+			if direct && resp.StatusCode == http.StatusTooManyRequests && account.isRateLimitActiveForKey(openAIImageGenerationRateLimitKey) {
+				return nil, &UpstreamFailoverError{
+					StatusCode:             resp.StatusCode,
+					ResponseHeaders:        resp.Header.Clone(),
+					ResponseBody:           respBody,
+					RetryableOnSameAccount: false,
+				}
+			}
 			return nil, s.newOpenAIAccountFailoverError(
 				account,
 				resp.StatusCode,

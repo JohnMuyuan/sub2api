@@ -2316,7 +2316,10 @@ export default {
         quotaObservedAt: 'Quota observed: ',
         quotaObservationUnknown: 'Unknown (cached)',
         estimatedTotalCost: 'Est. total ${cost}',
-        estimatedTotalCostTooltip: 'Estimated total cost at 100% utilization, based on current window cost and utilization'
+        estimatedTotalCostTooltip: 'Estimated total cost at 100% utilization, based on current window cost and utilization',
+        codexImage: 'Img',
+        codexImageTooltip: 'Image generation quota ({window} rolling window, passive sampled)',
+        codexImageTooltipDefault: 'Image generation quota (passive sampled)'
       },
       openaiReferral: {
         available: 'Invites left',

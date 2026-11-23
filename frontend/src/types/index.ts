@@ -1649,6 +1649,7 @@ export interface UsageProgress {
   resets_at: string | null
   remaining_seconds: number
   window_stats?: WindowStats | null // 窗口期统计（从窗口开始到当前的使用量）
+  window_minutes?: number // 上游上报的窗口时长（分钟）
   used_requests?: number
   limit_requests?: number
 }
@@ -1722,6 +1723,7 @@ export interface AccountUsageInfo {
   seven_day: UsageProgress | null
   seven_day_sonnet: UsageProgress | null
   seven_day_fable?: UsageProgress | null
+  codex_image?: UsageProgress | null
   thirty_day?: UsageProgress | null
   gemini_shared_daily?: UsageProgress | null
   gemini_pro_daily?: UsageProgress | null

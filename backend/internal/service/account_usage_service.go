@@ -154,6 +154,7 @@ type UsageProgress struct {
 	ResetsAt           *time.Time   `json:"resets_at"`                     // 重置时间
 	RemainingSeconds   int          `json:"remaining_seconds"`             // 距重置剩余秒数
 	WindowStats        *WindowStats `json:"window_stats,omitempty"`        // 窗口期统计（从窗口开始到当前的使用量）
+	WindowMinutes      int          `json:"window_minutes,omitempty"`      // 上游上报的窗口时长（分钟）
 	UsedRequests       int64        `json:"used_requests,omitempty"`
 	LimitRequests      int64        `json:"limit_requests,omitempty"`
 }
@@ -191,6 +192,7 @@ type UsageInfo struct {
 	SevenDay           *UsageProgress `json:"seven_day,omitempty"`            // 7天窗口
 	SevenDaySonnet     *UsageProgress `json:"seven_day_sonnet,omitempty"`     // 7天Sonnet窗口
 	SevenDayFable      *UsageProgress `json:"seven_day_fable,omitempty"`      // 7天Fable窗口（响应头 7d_oi）
+	CodexImage         *UsageProgress `json:"codex_image,omitempty"`          // OpenAI Codex 独立生图配额窗口（被动采样）
 	GeminiSharedDaily  *UsageProgress `json:"gemini_shared_daily,omitempty"`  // Gemini shared pool RPD (Google One / Code Assist)
 	GeminiProDaily     *UsageProgress `json:"gemini_pro_daily,omitempty"`     // Gemini Pro 日配额
 	GeminiFlashDaily   *UsageProgress `json:"gemini_flash_daily,omitempty"`   // Gemini Flash 日配额
@@ -762,13 +764,45 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 						applyExtraToUsage(usage, account.Extra, now)
 						usage.Source = "active"
 					}
+				} else {
+					slog.Warn("openai_quota_refresh_failed",
+						"account_id", account.ID,
+						"method", "wham_usage",
+						"error", err,
+					)
 				}
 			}
 		} else {
-			if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && hasOpenAIQuotaObservation(updates) {
-				mergeAccountExtra(account, updates)
-				applyExtraToUsage(usage, account.Extra, now)
-				usage.Source = "active"
+			// 普通 OpenAI OAuth 账号优先走轻量 /backend-api/wham/usage（20s 超时、无需发起模型推理），
+			// 避免每次刷新都打 POST /codex/responses (codex-auto-review) 触发首字节超时；
+			// 若未注入 quotaService 或 /wham/usage 未返回标准 5h/7d 快照，再回退到响应头探测。
+			var quotaErr, probeErr error
+			if s.openAIQuotaService != nil {
+				var quotaUsage *OpenAIQuotaUsage
+				quotaUsage, quotaErr = s.openAIQuotaService.QueryUsage(ctx, account.ID)
+				if quotaErr == nil && quotaUsage != nil {
+					if updates := quotaUsage.schedulingUpdates; hasOpenAIQuotaObservation(updates) {
+						mergeAccountExtra(account, updates)
+						applyExtraToUsage(usage, account.Extra, now)
+						usage.Source = "active"
+					}
+				}
+			}
+			if usage.Source != "active" {
+				var updates map[string]any
+				updates, probeErr = s.probeOpenAICodexSnapshot(ctx, account)
+				if probeErr == nil && hasOpenAIQuotaObservation(updates) {
+					mergeAccountExtra(account, updates)
+					applyExtraToUsage(usage, account.Extra, now)
+					usage.Source = "active"
+				}
+			}
+			if usage.Source != "active" {
+				slog.Warn("openai_quota_refresh_failed",
+					"account_id", account.ID,
+					"quota_error", quotaErr,
+					"probe_error", probeErr,
+				)
 			}
 		}
 		if usage.Source != "active" {
@@ -795,6 +829,29 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 			usage.SevenDay = &UsageProgress{UtilizationUnknown: true}
 		}
 		usage.SevenDay.WindowStats = windowStatsFromAccountStats(stats)
+	}
+
+	if usage.CodexImage != nil {
+		imageWindow := 24 * time.Hour
+		if usage.CodexImage.WindowMinutes > 0 {
+			imageWindow = time.Duration(usage.CodexImage.WindowMinutes) * time.Minute
+		}
+		if modelStats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, codexWindowStatsStart(usage.CodexImage, imageWindow, now), now, 0, 0, account.ID, 0, nil, nil, nil); err == nil {
+			var ws WindowStats
+			for _, stat := range modelStats {
+				if !IsGPTImageGenerationModel(stat.Model) {
+					continue
+				}
+				ws.Requests += stat.Requests
+				ws.Tokens += stat.TotalTokens
+				ws.Cost += stat.AccountCost
+				ws.StandardCost += stat.Cost
+				ws.UserCost += stat.ActualCost
+			}
+			if ws.Requests > 0 || ws.Tokens > 0 {
+				usage.CodexImage.WindowStats = &ws
+			}
+		}
 	}
 
 	return usage, nil
@@ -879,7 +936,7 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 		return nil, fmt.Errorf("marshal openai probe payload: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, chatgptCodexURL, bytes.NewReader(payloadBytes))
 	if err != nil {
@@ -915,8 +972,8 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	}
 	client, err := httppool.GetClient(httppool.Options{
 		ProxyURL:              proxyURL,
-		Timeout:               15 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second,
+		Timeout:               20 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build openai probe client: %w", err)
@@ -1010,6 +1067,9 @@ func applyExtraToUsage(usage *UsageInfo, extra map[string]any, now time.Time) {
 	}
 	if progress := buildCodexUsageProgressFromExtra(extra, "7d", now); progress != nil {
 		usage.SevenDay = progress
+	}
+	if progress := buildCodexImageUsageProgressFromExtra(extra, now); progress != nil {
+		usage.CodexImage = progress
 	}
 }
 

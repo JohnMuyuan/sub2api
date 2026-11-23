@@ -2629,11 +2629,17 @@ func (s *RateLimitService) HandleOpenAIImageRateLimit(ctx context.Context, accou
 		slog.Info("openai_image_rate_limit_skipped_by_error_code_policy", "account_id", account.ID, "status_code", statusCode)
 		return false
 	}
-	if !isOpenAIImageRateLimitError(statusCode, responseBody) {
+	directCodexImage := statusCode == http.StatusTooManyRequests && isOpenAICodexDirectImagesRequest(ctx)
+	if !directCodexImage && !isOpenAIImageRateLimitError(statusCode, responseBody) {
 		return false
 	}
 
+	if directCodexImage || ParseCodexRateLimitHeaders(headers) != nil {
+		s.persistOpenAICodexImageSnapshot(ctx, account, headers, responseBody)
+	}
+
 	resetAt := openAIImageRateLimitResetAt(headers, responseBody)
+	setAccountModelRateLimitSnapshot(account, openAIImageGenerationRateLimitKey, resetAt, openAIImageRateLimitReason, time.Now())
 	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, openAIImageGenerationRateLimitKey, resetAt, openAIImageRateLimitReason); err != nil {
 		slog.Warn("openai_image_rate_limit_set_model_rate_limit_failed", "account_id", account.ID, "scope", openAIImageGenerationRateLimitKey, "error", err)
 		return true
@@ -2751,7 +2757,7 @@ func openAIImageRateLimitResetAt(headers http.Header, body []byte) time.Time {
 	if resetAt := parseRetryAfterResetTime(headers, now); resetAt != nil && resetAt.After(now) {
 		return *resetAt
 	}
-	if resetAt := calculateOpenAI429ResetTime(headers); resetAt != nil && resetAt.After(now) {
+	if resetAt := calculateOpenAIImage429ResetTime(headers); resetAt != nil && resetAt.After(now) {
 		return *resetAt
 	}
 	if resetUnix := parseOpenAIRateLimitResetTime(body); resetUnix != nil {

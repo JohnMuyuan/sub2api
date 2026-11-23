@@ -93,7 +93,7 @@ func isOpenAIAccount(account *Account) bool {
 // handleOpenAIAccountUpstreamError expects canonicalModel to be the model used
 // for scheduling after applying account mapping exactly once.
 func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, canonicalModel ...string) (shouldDisable bool) {
-	if s != nil {
+	if s != nil && !isOpenAICodexDirectImagesRequest(ctx) {
 		var disabledOn429 bool
 		ctx, disabledOn429 = s.rateLimitService.maybeDisableOpenAISchedulingOn429(ctx, account, statusCode, headers)
 		if disabledOn429 {
@@ -184,7 +184,7 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		return false
 	}
 
-	if isOpenAIImageRateLimitError(statusCode, responseBody) {
+	if isOpenAIImageRateLimitError(statusCode, responseBody) || (statusCode == http.StatusTooManyRequests && isOpenAICodexDirectImagesRequest(ctx)) {
 		if s != nil && s.rateLimitService != nil {
 			_ = s.rateLimitService.HandleOpenAIImageRateLimit(stateCtx, account, statusCode, headers, responseBody)
 		}
@@ -315,6 +315,9 @@ func (s *OpenAIGatewayService) shouldRetryOpenAIOAuth429OnSameAccount(account *A
 
 func (s *OpenAIGatewayService) shouldRetryOpenAIOAuth429OnSameAccountWithResponse(account *Account, statusCode int, shouldDisable bool, headers http.Header, responseBody []byte) bool {
 	if shouldDisable || statusCode != http.StatusTooManyRequests || !isOpenAIOAuthAccount(account) || account.IsShadow() {
+		return false
+	}
+	if isOpenAIImageRateLimitError(statusCode, responseBody) {
 		return false
 	}
 	disposition, _ := classifyOpenAIOAuth429(headers, responseBody)
