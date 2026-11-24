@@ -802,12 +802,17 @@ func ProvideScheduledTestRunnerService(
 	rdb *redis.Client,
 	groupTests *PelicanGroupTestService,
 	monitor *ChannelMonitorV2Service,
+	concurrency *ConcurrencyService,
 	lockCache LeaderLockCache,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
 	if rdb != nil {
 		svc.qualityTrigger = &quality5xxTrigger{queue: qualityqueue.NewRedis(rdb)}
 	}
+	if accountTestSvc != nil {
+		svc.oauth429Repo, _ = accountTestSvc.accountRepo.(OAuth429Repository)
+	}
+	svc.oauth429Slots = concurrency
 	svc.judgeQuality = judge.Judge
 	svc.groupTests = groupTests
 	svc.windowPrime = newAccountWindowPrimeRunner(accountTestSvc, rateLimitSvc, lockCache)
@@ -1216,10 +1221,19 @@ func ProvideUsageBillingRepository(lanes *UsageBillingLaneCombiner) UsageBilling
 }
 
 // Staged delivery keeps its transactional journal and cache acknowledgement.
-// Direct Apply users still use lanes; journal application is not batched.
+// Direct Apply users use service lanes; staged delivery uses repository lanes.
 type durableUsageBillingLanes struct {
 	*UsageBillingLaneCombiner
 	DurableUsageBillingRepository
+}
+
+func (r *durableUsageBillingLanes) RecoverStagedUsageBilling(ctx context.Context, key UsageBillingEventKey) (*UsageBillingRecovery, error) {
+	if worker, ok := r.DurableUsageBillingRepository.(interface {
+		RecoverStagedUsageBilling(context.Context, UsageBillingEventKey) (*UsageBillingRecovery, error)
+	}); ok {
+		return worker.RecoverStagedUsageBilling(ctx, key)
+	}
+	return r.ApplyStagedUsageBilling(ctx, key)
 }
 
 // Preserve retry rotation so a failed cache invalidation cannot starve later receipts.
@@ -1348,6 +1362,11 @@ func ProvideAccountOpsService(settings SettingRepository, repo AccountOpsReposit
 	svc.SetNotificationQuotaReaders(usageLogs, geminiQuota)
 	svc.autoAccounts, _ = accounts.(AccountConcurrencyRepository)
 	svc.autoGroups = groups
+	if routing, ok := accounts.(OAuth429RoutingConfigurator); ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		svc.oauth429Routing, svc.oauth429RoutingErr = routing.ConfigureOAuth429Routing(ctx, oauth429ConfiguredCompactModel(cfg))
+		cancel()
+	}
 	svc.start(cfg.RunsBackgroundJobs())
 	return svc
 }

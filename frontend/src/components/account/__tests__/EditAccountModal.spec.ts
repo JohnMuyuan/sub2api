@@ -101,6 +101,7 @@ const BaseDialogStub = defineComponent({
 const ModelWhitelistSelectorStub = defineComponent({
   name: 'ModelWhitelistSelector',
   props: {
+    syncCredentials: Object,
     modelMappings: { type: Array, default: () => [] },
     modelValue: {
       type: Array,
@@ -380,6 +381,60 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledWith(account.id, expect.objectContaining({
       extra: expect.not.objectContaining({ request_timezone: expect.anything() })
     }))
+  })
+
+  it('announces gateway model settings independently and shares persistent dismissal', async () => {
+    localStorage.removeItem('sub2api:new-feature-notices:v1:41')
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const notices = useNewFeatureNoticeStore()
+    notices.dismiss(41, NEW_FEATURE_NOTICES.crossPlatformGatewayAccounts)
+    const account = { ...buildAccount(), platform: 'gateway', type: 'gateway',
+      credentials: { upstream_kind: 'new_api', base_url: 'https://relay.example.com' } } as any
+    const wrapper = mountModal(account)
+    await flushPromises()
+    const badge = wrapper.findAllComponents(NewFeatureBadge).find(item => item.props('noticeId') === NEW_FEATURE_NOTICES.gatewayModelSync)!
+    expect(badge.find('button').exists()).toBe(true)
+    const sibling = mount(NewFeatureBadge, { props: { noticeId: NEW_FEATURE_NOTICES.gatewayModelSync, userId: 41 }, global: { plugins: [pinia] } })
+    await badge.get('button').trigger('click')
+    expect(sibling.find('button').exists()).toBe(false)
+    wrapper.unmount()
+    sibling.unmount()
+    setActivePinia(createPinia())
+    const reloaded = mountModal(account)
+    await flushPromises()
+    const reloadedBadge = reloaded.findAllComponents(NewFeatureBadge).find(item => item.props('noticeId') === NEW_FEATURE_NOTICES.gatewayModelSync)!
+    expect(reloadedBadge.find('button').exists()).toBe(false)
+    expect(useNewFeatureNoticeStore().isDismissed(41, NEW_FEATURE_NOTICES.crossPlatformGatewayAccounts)).toBe(true)
+    const future = mount(NewFeatureBadge, { props: { noticeId: 'fixture-future-gateway-notice-C', userId: 41 } })
+    expect(future.find('button').exists()).toBe(true)
+    future.unmount()
+  })
+
+  it.each(['new_api', 'sub2api'])('keeps %s gateway models across connection and group edits', async (kind) => {
+    const account = { ...buildAccount(), platform: 'gateway', type: 'gateway', group_ids: [10],
+      credentials: { upstream_kind: kind, base_url: 'https://relay.example.com',
+        model_mapping: { live: 'live', public: 'live' }, unknown_option: { keep: true } } } as any
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await flushPromises()
+    const selector = wrapper.getComponent(ModelWhitelistSelectorStub)
+    expect(selector.props('modelValue')).toEqual(['live'])
+    expect(selector.props('modelMappings')).toEqual([{ from: 'public', to: 'live' }])
+    const fields = wrapper.get('[data-testid="gateway-account-fields"]')
+    await fields.get('input[type="url"]').setValue('https://edited.example.com')
+    await fields.get('input[type="password"]').setValue('synthetic-new-key')
+    wrapper.getComponent(GroupSelectorStub).vm.$emit('update:modelValue', [20])
+    await flushPromises()
+    expect(selector.props('syncCredentials')).toMatchObject({ account_id: account.id,
+      upstream_kind: kind, base_url: 'https://edited.example.com', api_key: 'synthetic-new-key' })
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[0]?.[1]).toMatchObject({ group_ids: [20], credentials: {
+      upstream_kind: kind, base_url: 'https://edited.example.com', api_key: 'synthetic-new-key',
+      model_mapping: account.credentials.model_mapping
+    } })
   })
 
   it('keeps the target platform announcement independent, shared and persistent', async () => {
@@ -3985,3 +4040,64 @@ describe('initial OAuth model scope ownership', () => {
   expect(useNewFeatureNoticeStore().isDismissed(41, NEW_FEATURE_NOTICES.protocolFeatureSwitches)).toBe(true)
   reloaded.unmount()
  })
+
+
+describe('Claude account probe penalty', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(buildAccount())
+  })
+  const account = () => ({ ...buildAccount(), platform: 'anthropic', credentials: { api_key: 'synthetic-key', base_url: 'https://example.invalid' } })
+  it('enables, saves, reloads and disables the account minimum without changing group prices', async () => {
+    const original = account()
+    const wrapper = mountModal(original); await flushPromises()
+    expect(wrapper.get<HTMLInputElement>('[data-testid="probe-penalty-enabled"]').element.checked).toBe(false)
+    await wrapper.get('[data-testid="probe-penalty-enabled"]').setValue(true)
+    await wrapper.get('[data-testid="probe-penalty-minimum"]').setValue(0.001)
+    await wrapper.get('#edit-account-form').trigger('submit.prevent'); await flushPromises()
+    expect(updateAccountMock).toHaveBeenCalledWith(1, expect.objectContaining({ extra: expect.objectContaining({ probe_penalty: { enabled: true, minimum_charge: 0.001 } }) }))
+    const extra = updateAccountMock.mock.calls[0][1].extra
+    wrapper.unmount(); updateAccountMock.mockClear()
+    const reopened = mountModal({ ...original, extra }); await flushPromises()
+    expect(reopened.get<HTMLInputElement>('[data-testid="probe-penalty-enabled"]').element.checked).toBe(true)
+    await reopened.get('[data-testid="probe-penalty-enabled"]').setValue(false)
+    await reopened.get('#edit-account-form').trigger('submit.prevent'); await flushPromises()
+    expect(updateAccountMock.mock.calls[0][1].extra.probe_penalty).toEqual({ enabled: false, minimum_charge: 0.001 })
+  })
+  it('rejects a zero enabled minimum and hides unsupported account controls', async () => {
+    const wrapper = mountModal(account()); await flushPromises()
+    await wrapper.get('[data-testid="probe-penalty-enabled"]').setValue(true)
+    await wrapper.get('[data-testid="probe-penalty-minimum"]').setValue(0)
+    await wrapper.get('#edit-account-form').trigger('submit.prevent'); await flushPromises()
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    expect(showErrorMock).toHaveBeenCalledWith('admin.accounts.probePenalty.invalid')
+    wrapper.unmount()
+    const other = mountModal(buildAccount()); await flushPromises()
+    expect(other.find('[data-testid="probe-penalty-settings"]').exists()).toBe(false)
+  })
+  it('keeps the new announcement independent and remembers dismissal across remounts', async () => {
+    localStorage.clear(); const pinia = createPinia(); setActivePinia(pinia)
+    const notices = useNewFeatureNoticeStore(pinia)
+    notices.dismiss(41, NEW_FEATURE_NOTICES.protocolFeatureSwitches)
+    const wrapper = mountModal(account()); await flushPromises()
+    const badge = wrapper.findAllComponents(NewFeatureBadge).find(b => b.props('noticeId') === NEW_FEATURE_NOTICES.accountProbePenalty)!
+    expect(badge.get('button').exists()).toBe(true)
+    await badge.get('button').trigger('click')
+    wrapper.unmount(); setActivePinia(createPinia())
+    const reloaded = mountModal(account()); await flushPromises()
+    expect(reloaded.get('[data-testid="probe-penalty-settings"]').find('[data-testid="new-feature-badge"]').exists()).toBe(false)
+    expect(useNewFeatureNoticeStore().isDismissed(41, NEW_FEATURE_NOTICES.protocolFeatureSwitches)).toBe(true)
+    const later = mount(NewFeatureBadge, { props: { noticeId: 'probe-penalty-fixture-next-feature', userId: 41 } })
+    expect(later.get('button').exists()).toBe(true)
+  })
+})
+
+
+it('omits untouched probe settings so stale editors cannot restore old charges', async () => {
+  vi.clearAllMocks(); checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false }); updateAccountMock.mockResolvedValue(buildAccount())
+  const account = { ...buildAccount(), platform: 'anthropic', credentials: { api_key: 'synthetic' }, extra: { probe_penalty: { enabled: true, minimum_charge: .001 } } }
+  const wrapper = mountModal(account); await flushPromises()
+  await wrapper.get('#edit-account-form').trigger('submit.prevent'); await flushPromises()
+  expect(updateAccountMock.mock.calls[0][1].extra).not.toHaveProperty('probe_penalty')
+})

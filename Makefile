@@ -1,6 +1,12 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/components/settings/ModelPlazaCurrencySettings.spec.ts \
+	src/utils/__tests__/plazaCurrency.spec.ts \
+	src/components/modelPlaza/__tests__/ModelPlazaContent.currency.spec.ts \
+	src/components/modelPlaza/__tests__/PlazaModelPricingTable.spec.ts \
+	src/components/modelPlaza/__tests__/PlazaModelPricingTable.video.spec.ts \
+	src/components/modelPlaza/__tests__/PlazaGroupSection.spec.ts \
 	src/components/common/__tests__/Select.spec.ts \
 	src/components/account/__tests__/AccountUsageCell.spec.ts \
 	src/views/admin/__tests__/ChannelsView.bedrockCompat.spec.ts \
@@ -78,6 +84,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/admin/__tests__/AccountQualityView.spec.ts \
 	src/views/admin/__tests__/AccountsView.bulkEdit.spec.ts \
 	src/views/admin/__tests__/AccountsView.declarationRefresh.spec.ts \
+	src/views/admin/__tests__/AccountsView.newAPIConfig.spec.ts \
 	src/utils/__tests__/accountUpstreamModelAutoSync.spec.ts \
 	src/utils/__tests__/qualityRulePatch.spec.ts \
 	src/components/admin/operations/__tests__/QualityOwnershipReview.spec.ts \
@@ -97,6 +104,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/common/__tests__/DateRangePicker.midnight.spec.ts \
 	src/components/admin/usage/__tests__/UsageStatsCards.spec.ts \
 	src/components/admin/usage/__tests__/UsageCleanupDialog.spec.ts \
+	src/components/usage/__tests__/UsageApiGuide.spec.ts \
 	src/views/user/__tests__/UsageView.spec.ts \
 	src/components/usage/__tests__/TrafficPanel.spec.ts \
 	src/api/__tests__/traffic.spec.ts \

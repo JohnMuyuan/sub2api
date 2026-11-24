@@ -116,6 +116,20 @@ func applyDurableUsageBilling(ctx context.Context, repo DurableUsageBillingRepos
 	if err != nil {
 		return false, err
 	}
+	if target, ok := ctx.Value(probePenaltyResultKey{}).(*ForwardResult); ok && target != nil {
+		if recovered == nil || !recovered.Settled {
+			return false, ErrUsageBillingOutcomeUnknown
+		}
+		canonical := recovered.Event.Usage
+		target.ProbePenalty = nil
+		if canonical.CustomerCostDetails != nil {
+			target.ProbePenalty = canonical.CustomerCostDetails.ProbePenalty
+		}
+		target.Usage.InputTokens = canonical.InputTokens
+		target.Usage.OutputTokens = canonical.OutputTokens
+		target.Usage.CacheReadInputTokens = canonical.CacheReadTokens
+		target.Usage.CacheCreationInputTokens = canonical.CacheCreationTokens
+	}
 	auth, _ := p.APIKeyService.(APIKeyAuthCacheInvalidator)
 	if err := invalidateDurableUsageBilling(ctx, recovered, deps.billingCacheService, auth); err != nil {
 		// The committed canonical usage is already authoritative. Cache work
@@ -188,12 +202,18 @@ func recoverUsageBillingBatch(ctx context.Context, repo DurableUsageBillingRepos
 	if err != nil {
 		return err
 	}
+	apply := repo.ApplyStagedUsageBilling
+	if worker, ok := repo.(interface {
+		RecoverStagedUsageBilling(context.Context, UsageBillingEventKey) (*UsageBillingRecovery, error)
+	}); ok {
+		apply = worker.RecoverStagedUsageBilling
+	}
 	var failures error
 	for _, key := range keys {
 		if ctx.Err() != nil {
 			return errors.Join(failures, ctx.Err())
 		}
-		r, err := repo.ApplyStagedUsageBilling(ctx, key)
+		r, err := apply(ctx, key)
 		if err == nil {
 			err = invalidateDurableUsageBilling(ctx, r, cache, auth)
 		}

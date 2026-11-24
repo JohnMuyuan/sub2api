@@ -96,6 +96,47 @@ jobs:
             printf '%s %s %s\n' "$original" "$source" "$expected_blob" > evidence/original-blob.txt
             git show "$original:$source" > "$source"
             test "$(git hash-object "$source")" = "$expected_blob"
+            if [ "$BEHAVIOR" = red ]; then
+              # Keep the historical observer business code. Add only the
+              # zero-value struct fields required by current helper callers.
+              python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          path = Path('backend/internal/service/account_test_service.go')
+          candidate = subprocess.check_output(['git', 'show', f'HEAD:{path}'])
+          historical = path.read_bytes()
+          field = b'\tcialloAccounts            sync.Map\n'
+          anchor = b'\tmodelTraceAccounts        sync.Map\n'
+          if candidate.count(field) != 1 or field in historical or historical.count(anchor) != 1:
+              raise SystemExit('unexpected Ciallo compatibility field or historical struct')
+          old_options = b'type AccountTestOptions struct {\n\tImageDataURL string\n\tAudioDataURL string\n}\n'
+          current_options = b'type AccountTestOptions struct {\n\tImageDataURL string\n\tAudioDataURL string\n\tGroupID      int64\n\tPlatform     string\n}\n'
+          if historical.count(old_options) != 1 or candidate.count(current_options) != 1:
+              raise SystemExit('unexpected historical or candidate AccountTestOptions shape')
+          compatible = historical.replace(anchor, anchor + field, 1).replace(old_options, current_options, 1)
+          if compatible.replace(field, b'', 1).replace(current_options, old_options, 1) != historical:
+              raise SystemExit('compatibility overlay changed historical observer business code')
+          expected = subprocess.check_output(['git', 'hash-object', '--stdin'], input=compatible).strip()
+          path.write_bytes(compatible)
+          actual = subprocess.check_output(['git', 'hash-object', str(path)]).strip()
+          if actual != expected:
+              raise SystemExit('historical compatibility blob mismatch')
+          Path('evidence/observer-compile-compatibility-blob.txt').write_bytes(expected + b'\n')
+          PY
+              git diff --exit-code HEAD -- '*test.go'
+            else
+              # The pinned repository predates the OpenAI rotation CAS tests.
+              fixture=backend/internal/repository/account_repo_temp_unsched_test.go
+              git show "$original:$fixture" > "$fixture"
+              test "$(git hash-object "$fixture")" = "$(git rev-parse "$original:$fixture")"
+              # These account repositories predate the compact-routing selector.
+              # Apply only its import, struct field and constructor initialization.
+              routing=2c69cefb93828e2bdefc413b4df058f3a342c7e1
+              git diff "$routing^" "$routing" -- "$source" > evidence/routing-field.patch
+              git apply evidence/routing-field.patch
+            fi
+            git diff "$original" -- "$source" > evidence/red-compile-compatibility.diff
             git diff --stat > evidence/red-source-diff.txt
           else
             git diff --exit-code

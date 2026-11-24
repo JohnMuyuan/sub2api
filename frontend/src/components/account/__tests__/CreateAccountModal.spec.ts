@@ -96,6 +96,7 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn().mockResolvedValue([]),
+  accountsAPI: { syncUpstreamModels: vi.fn(), syncUpstreamModelsPreview: vi.fn() },
 }))
 
 vi.mock('@/api/admin/accountTokenGuardV2', () => ({
@@ -112,6 +113,8 @@ vi.mock('vue-i18n', async () => {
 
 import CreateAccountModal from '../CreateAccountModal.vue'
 import OpenAIRequestTimezoneField from '../OpenAIRequestTimezoneField.vue'
+import ModelWhitelistSelector from '../ModelWhitelistSelector.vue'
+import { accountsAPI } from '@/api/admin/accounts'
 import BPSProxyRoutingSettings from '../BPSProxyRoutingSettings.vue'
 import OpenAITwoFAImport from '../OpenAITwoFAImport.vue'
 
@@ -190,7 +193,7 @@ const ModelWhitelistSelectorStub = defineComponent({
   >models</button>`,
 })
 
-function mountModal(groups: any[] = [], realDialog = false, proxies: any[] = []) {
+function mountModal(groups: any[] = [], realDialog = false, proxies: any[] = [], realGatewayControls = false) {
   return mount(CreateAccountModal, {
     attachTo: realDialog ? document.body : undefined,
     props: { show: true, proxies, groups },
@@ -205,8 +208,8 @@ function mountModal(groups: any[] = [], realDialog = false, proxies: any[] = [])
         PlatformIcon: true,
         ProxySelector: true,
         ProxyAdBanner: true,
-        GroupSelector: GroupSelectorStub,
-        ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        GroupSelector: realGatewayControls ? false : GroupSelectorStub,
+        ModelWhitelistSelector: realGatewayControls ? false : ModelWhitelistSelectorStub,
         QuotaLimitCard: true,
       },
     },
@@ -1651,7 +1654,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     const labels = (testid: string) =>
       wrapper.get(`[data-testid="${testid}"]`).findAll('button').map(button => button.text().trim())
     expect(labels('platform-row-cn')).toEqual(['Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax'])
-    expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Command Code', 'Cline', 'Mistral', 'Qwen'])
+    expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Sub2API / New API', 'Command Code', 'Cline', 'Mistral', 'Qwen'])
   })
 
   it('creates a Cline account without an account type and with only the Chat Completions endpoint', async () => {
@@ -2188,4 +2191,64 @@ describe('mature provider import entry', () => {
     await selectButtonByText(w, 'API Key')
     expect(w.find('[data-testid="provider-import-mode"]').exists(), 'API Key and Responses accounts must offer provider import').toBe(true)
   })
+})
+
+it.each(['new_api', 'sub2api'])('creates an unrestricted %s gateway when models are untouched', async (kind) => {
+  const groups = [{ id: 1, name: 'Fixture OpenAI', platform: 'openai', status: 'active', rate_multiplier: 1, require_oauth_only: false }]
+  createAccountMock.mockReset().mockResolvedValue({ id: 1003, platform: 'gateway', type: 'gateway' })
+  syncUpstreamModelsMock.mockClear()
+  vi.mocked(accountsAPI.syncUpstreamModels).mockClear()
+  vi.mocked(accountsAPI.syncUpstreamModelsPreview).mockClear()
+  const wrapper = mountModal(groups, false, [], true)
+  await wrapper.get('[data-testid="platform-button-gateway"]').trigger('click')
+  await wrapper.get('[data-tour="account-form-name"]').setValue('Untouched gateway')
+  const fields = wrapper.get('[data-testid="gateway-account-fields"]')
+  await fields.get('select').setValue(kind)
+  await fields.get('input[type="url"]').setValue('https://relay.example.com')
+  await fields.get('input[type="password"]').setValue('synthetic-key')
+  await wrapper.get('[data-tour="account-form-groups"] input[value="1"]').setValue(true)
+  await flushPromises()
+  const selector = wrapper.getComponent(ModelWhitelistSelector)
+  expect(selector.props('modelValue')).toEqual([])
+  expect(selector.props('modelMappings')).toEqual([])
+  await wrapper.get('#create-account-form').trigger('submit.prevent')
+  await flushPromises()
+  expect(createAccountMock).toHaveBeenCalledOnce()
+  expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({
+    platform: 'gateway', type: 'gateway', group_ids: [1],
+    credentials: {
+      upstream_kind: kind, base_url: 'https://relay.example.com', api_key: 'synthetic-key', model_mapping: {}
+    }
+  }))
+  expect(syncUpstreamModelsMock).not.toHaveBeenCalled()
+  expect(accountsAPI.syncUpstreamModels).not.toHaveBeenCalled()
+  expect(accountsAPI.syncUpstreamModelsPreview).not.toHaveBeenCalled()
+})
+
+it.each(['new_api', 'sub2api'])('creates a %s gateway with editable account models and one calling key', async (kind) => {
+  const wrapper = mountModal()
+  await wrapper.get('[data-testid="platform-button-gateway"]').trigger('click')
+  await wrapper.get('[data-tour="account-form-name"]').setValue('fixture gateway')
+  const fields = wrapper.get('[data-testid="gateway-account-fields"]')
+  await fields.get('select').setValue(kind)
+  await fields.get('input[type="url"]').setValue('https://relay.example.com')
+  await fields.get('input[type="password"]').setValue('fixture-only')
+  const selector = wrapper.getComponent(ModelWhitelistSelectorStub)
+  expect(selector.props('syncCredentials')).toMatchObject({
+    platform: 'gateway', type: 'gateway', upstream_kind: kind,
+    base_url: 'https://relay.example.com', api_key: 'fixture-only'
+  })
+  selector.vm.$emit('update:modelValue', ['live'])
+  selector.vm.$emit('update:modelMappings', [{ from: 'public', to: 'live' }])
+  await flushPromises()
+  await wrapper.get('#create-account-form').trigger('submit.prevent')
+  await flushPromises()
+  expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({
+    platform: 'gateway',
+    type: 'gateway',
+    credentials: expect.objectContaining({
+      upstream_kind: kind, base_url: 'https://relay.example.com', api_key: 'fixture-only',
+      model_mapping: { live: 'live', public: 'live' }
+    })
+  }))
 })

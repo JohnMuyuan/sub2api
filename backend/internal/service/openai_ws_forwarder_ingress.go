@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
 	"github.com/Wei-Shaw/sub2api/internal/requestcapture"
 	coderws "github.com/coder/websocket"
@@ -906,6 +907,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if !gjson.ValidBytes(trimmed) {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
 		}
+		// 帧内重复字段会让这里 gjson 读到的首个值与后续重编码/上游读到的值分叉
+		// （GHSA-p3r4-jcm3-2hph），在读取任何字段之前拒绝。
+		if field, conflict := requestmodel.ConflictingField("application/json", trimmed); conflict {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("websocket request payload declares field %.64q more than once", field), nil)
+		}
 
 		// Keep the client's per-frame window separate from handshake/account identity
 		// normalization. A handshake window can initialize the session, but must
@@ -1102,7 +1108,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			normalized = stripped
 			logOpenAIWSModeInfo("ingress_ws_codex_spark_image_tool_stripped account_id=%d", account.ID)
 		}
-		imageIntent := IsImageGenerationIntentForPlatform(openAIResponsesEndpoint, originalModel, normalized, account.Platform)
+		// normalized 由 parseClientPayload 中已通过 gjson.ValidBytes 校验的字节派生，
+		// 后续改写只走 sjson 或 decode→json.Marshal，合法性保持，因此跳过重复校验。
+		imageIntent := IsImageGenerationIntentForPlatformValidated(openAIResponsesEndpoint, originalModel, normalized, account.Platform)
 		if imageIntent && !imageGenerationAllowed {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, ImageGenerationPermissionMessage(), nil)
 		}
@@ -1372,6 +1380,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		bridgeReplayInputExists := false
 		var bridgeAccountFailoverInput []json.RawMessage
 		bridgeAccountFailoverInputExists := false
+		preserveOAuthOutput := account.IsOpenAIOAuth() && openAIWSPlaintextBridgeAccount(account) && !smartStateful
+		bridgeResponseID := ""
+		bridgeIdentity := openAIWSBridgeFrameIdentity(c, firstPayload.clientPayloadRaw)
 		for turn := 1; ; turn++ {
 			if turn > 1 && hooks != nil {
 				if err := hooks.beforeRequest(turn, currentBridgePayload.payloadRaw, currentBridgePayload.clientPayloadRaw, currentBridgePayload.originalModel); err != nil {
@@ -1422,6 +1433,26 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if smartStrict && currentBridgePayload.previousResponseID != "" && currentBridgePayload.previousResponseID != smartSession.LastResponse {
 				return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "continuation does not belong to this HTTP session", nil)
+			}
+			if preserveOAuthOutput {
+				identity := openAIWSBridgeFrameIdentity(c, currentBridgePayload.clientPayloadRaw)
+				conflict := bridgeIdentity.conflicts(identity)
+				if currentBridgePayload.previousResponseID != "" && (currentBridgePayload.previousResponseID != bridgeResponseID || conflict) {
+					return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "continuation does not belong to this HTTP session", nil)
+				}
+				if conflict {
+					bridgeReplayInput, bridgeAccountFailoverInput = nil, nil
+					bridgeReplayInputExists, bridgeAccountFailoverInputExists = false, false
+					bridgeResponseID, turnState = "", ""
+					bridgeIdentity = identity
+				} else {
+					if identity.thread != "" {
+						bridgeIdentity.thread = identity.thread
+					}
+					if identity.session != "" {
+						bridgeIdentity.session = identity.session
+					}
+				}
 			}
 			bridgePayloadRaw := currentBridgePayload.payloadRaw
 			bridgePayloadBytes := currentBridgePayload.payloadBytes
@@ -1522,6 +1553,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if bridgeErr != nil && isOpenAIWSSessionPreempted(ctx) {
 				return errOpenAIWSSessionPreempted
 			}
+			if result != nil {
+				// The HTTP payload can contain a policy rewrite or replayed configuration from an earlier turn.
+				result.RequestedReasoningEffort = currentBridgePayload.requestedReasoningEffort
+			}
 			if bridgeErr != nil && ctx.Err() != nil {
 				bridgeErr = clientReader.closeForControl(ctx)
 			} else if errors.Is(bridgeErr, errOpenAIWSUsageDrainExpired) && clientReader.disconnected() {
@@ -1591,6 +1626,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					result.wsAccountFailoverReplayInput,
 				)
 				bridgeAccountFailoverInputExists = true
+			}
+			if preserveOAuthOutput {
+				bridgeResponseID = ""
+				if result.wsReplayInputExists {
+					bridgeResponseID = strings.TrimSpace(result.RequestID)
+				} else {
+					bridgeReplayInput, bridgeAccountFailoverInput = nil, nil
+					bridgeReplayInputExists, bridgeAccountFailoverInputExists = false, false
+				}
 			}
 			if bridgeTurnState := strings.TrimSpace(result.ResponseHeaders.Get(openAIWSTurnStateHeader)); bridgeTurnState != "" {
 				// Follow-up turns on this bridge retain their own upstream state;
@@ -1933,6 +1977,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				return nil, openAIWSUnsentAgentTurn(err, clientPayload, originalModel, turn)
 			}
 			return nil, openAIWSAgentRecoveryClose(err)
+		}
+		// Lease acquisition and admission can outlast an actual same-account
+		// retry's window. Ordinary accepted ingress must still drain on disconnect;
+		// admitted generations and later client turns keep their admission.
+		if latencyGenerationStartedTurn == 0 && openAISameAccountRetryFromContext(ctx).accountID > 0 {
+			if !OpenAISameAccountRetryAdmissible(ctx, latest.ID) || !OpenAIWSIngressCanFailover(priorityLatencyCtx, c) {
+				return nil, denyOpenAITurn("same_account_retry_unavailable")
+			}
 		}
 		latencyGenerationStartedTurn = turn
 		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(payload), s.openAIWSWriteTimeout()); err != nil {

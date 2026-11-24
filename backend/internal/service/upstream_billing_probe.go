@@ -50,7 +50,8 @@ const (
 	upstreamBillingProbeUnsupportedDelayFactor = 8
 	upstreamBillingProbeAccountRateScale       = 10000.0
 	upstreamBillingProbeLeaderLockKey          = "upstream:billing:probe:leader"
-	upstreamBillingProbeLeaderLockTTL          = 2 * time.Minute
+	// A full batch can run five waves of sequential rate and balance GETs.
+	upstreamBillingProbeLeaderLockTTL = 4 * time.Minute
 )
 
 // UpstreamBillingProbeMaxBatchSize limits one manual batch and one runner cycle.
@@ -152,7 +153,7 @@ func BuildUpstreamBillingRateSnapshotItems(accounts []Account) []UpstreamBilling
 		// The billing endpoint is supported by every API-key platform; limiting
 		// this projection to OpenAI would make the background refresh erase the
 		// other platforms' persisted snapshots from the table.
-		if account.Type == AccountTypeAPIKey {
+		if account.Type == AccountTypeAPIKey || account.IsGateway() {
 			snapshot = decodeUpstreamBillingProbeSnapshot(account.Extra)
 		}
 		items = append(items, UpstreamBillingRateSnapshotItem{
@@ -630,7 +631,7 @@ func (s *UpstreamBillingProbeService) SetAccountEnabled(ctx context.Context, acc
 
 func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, account *Account, intervalMinutes int) (*UpstreamBillingProbeSnapshot, error) {
 	now := s.currentTime().UTC()
-	if s.newAPIRepo != nil {
+	if s.newAPIRepo != nil && (!account.IsGateway() || account.GetCredential(GatewayUpstreamKindCredentialKey) == "new_api") {
 		binding, err := s.newAPIRepo.GetBinding(ctx, account.ID)
 		if err != nil {
 			return nil, newAPIError("storage_unavailable")
@@ -638,6 +639,9 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		if binding != nil && binding.Fingerprint == NewAPIAccountFingerprint(account) {
 			return s.probeNewAPIAccount(ctx, account, binding, intervalMinutes)
 		}
+	}
+	if account.IsGateway() && account.GetCredential(GatewayUpstreamKindCredentialKey) == "new_api" {
+		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "new_api_authorization_required", 0)
 	}
 	if s.accountTestService == nil || s.accountTestService.httpUpstream == nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "transport_unavailable", 0)
@@ -680,12 +684,12 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	}
 	target := upstreamBillingProbeTarget{apiKey: apiKey, proxyURL: proxyURL}
 	rateResult := s.fetchUpstreamProbeBody(ctx, account, target,
-		buildOpenAIEndpointURL(normalizedBaseURL, "/v1/sub2api/billing"), upstreamBillingProbeMaxBodyBytes)
+		buildOpenAIEndpointURL(normalizedBaseURL, "/v1/sub2api/billing"), upstreamBillingProbeMaxBodyBytes, upstreamBillingProbeRequestTimeout)
 	previousRate := account.BillingRateMultiplier()
 	snapshot, syncRate := upstreamBillingRateSnapshotFromResult(account, intervalMinutes, now, rateResult, previousRate)
-	if upstreamBalanceProbeAllowed(normalizedBaseURL, rateResult) {
+	if ctx.Err() == nil && upstreamBalanceProbeAllowed(normalizedBaseURL, rateResult) {
 		balanceResult := s.fetchUpstreamProbeBody(ctx, account, target,
-			upstreamBalanceProbeURL(normalizedBaseURL, now), upstreamBalanceProbeMaxBodyBytes)
+			upstreamBalanceProbeURL(normalizedBaseURL, now), upstreamBalanceProbeMaxBodyBytes, upstreamBalanceProbeTimeout)
 		snapshot.Balance = upstreamBalanceSnapshotFromResult(balanceResult, snapshot.Balance, intervalMinutes, now)
 		// Sub2API upstreams that predate /v1/sub2api/billing still answer
 		// /v1/usage. The stretched unsupported delay is for upstreams that return
@@ -726,6 +730,7 @@ type upstreamBillingProbeHTTPResult struct {
 	header     http.Header
 	body       []byte
 	failure    string
+	timedOut   bool
 }
 
 func (s *UpstreamBillingProbeService) fetchUpstreamProbeBody(
@@ -734,8 +739,9 @@ func (s *UpstreamBillingProbeService) fetchUpstreamProbeBody(
 	target upstreamBillingProbeTarget,
 	requestURL string,
 	maxBodyBytes int,
+	timeout time.Duration,
 ) upstreamBillingProbeHTTPResult {
-	probeCtx, cancel := context.WithTimeout(ctx, upstreamBillingProbeRequestTimeout)
+	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, requestURL, bytes.NewReader(nil))
 	if err != nil {
@@ -757,7 +763,7 @@ func (s *UpstreamBillingProbeService) fetchUpstreamProbeBody(
 	}
 	resp, err := s.accountTestService.httpUpstream.DoWithTLS(req, target.proxyURL, account.ID, account.Concurrency, tlsProfile)
 	if err != nil {
-		return upstreamBillingProbeHTTPResult{failure: "request_failed"}
+		return upstreamBillingProbeHTTPResult{failure: "request_failed", timedOut: errors.Is(err, context.DeadlineExceeded)}
 	}
 	if resp == nil || resp.Body == nil {
 		return upstreamBillingProbeHTTPResult{failure: "empty_response"}
@@ -1125,14 +1131,11 @@ func isUpstreamBillingProbeStatus(status string) bool {
 // CN providers, whose official-domain accounts are short-circuited to
 // "unsupported" by upstreamBillingProbeTargetIsOfficialAPI).
 // Non-sub2api upstreams return 404 and the snapshot records "unsupported".
-// Only AccountTypeAPIKey is in scope. OAuth/Bedrock hold no static API key to
-// present at all; AccountTypeUpstream (antigravity relay accounts) does carry
-// a base_url plus a static api_key, but it is deliberately left out of the
-// current supported set. New antigravity relay accounts are created with
-// type=apikey by the admin form, so only pre-existing type=upstream rows
-// cannot turn the probe on.
+// Explicit gateway accounts use either the configured New API authorization
+// or the Sub2API declaration endpoint. Other relay types retain their policy.
 func IsUpstreamBillingProbeIdentity(platform, accountType string) bool {
-	return accountType == AccountTypeAPIKey && domain.IsConcretePlatform(platform)
+	return (accountType == AccountTypeAPIKey && domain.IsConcretePlatform(platform)) ||
+		(accountType == AccountTypeGateway && platform == PlatformGateway)
 }
 
 func isUpstreamBillingProbeAccount(account *Account) bool {
