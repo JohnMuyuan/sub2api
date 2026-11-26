@@ -14,7 +14,6 @@ import profitOps from './profitOps'
 import upstreamOps from './upstreamOps'
 import channelOps from './channelOps'
 import ipAudit from './ipAudit'
-import traffic from './traffic'
 import usageApi from './usageApi'
 import connections from './connections'
 import securityRecords from './securityRecords'
@@ -60,7 +59,6 @@ export default {
   accountTestTiming,
   openaiAuth,
   upstreamEntities,
-  traffic,
   usageApi,
   ipAudit,
   connections,
